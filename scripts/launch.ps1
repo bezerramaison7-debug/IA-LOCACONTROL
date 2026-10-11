@@ -57,6 +57,9 @@ try {
         Invoke-Checked -Executable $ProjectPython -Arguments ($Alembic + @('upgrade', 'head'))
     }
 
+    # Instalação nova, sem nenhum usuário: cria a conta de primeiro acesso.
+    $FirstRun = (& $ProjectPython -m app.auth.cli default | Out-String).Trim() -eq 'CREATED'
+
     # Start-Process não coloca aspas nos argumentos: o caminho com espaços precisa delas.
     $ServerArguments = @('-m', 'uvicorn', 'app.main:app', '--app-dir', "`"$Backend`"", '--host', '127.0.0.1', '--port', "$Port")
     $Process = Start-Process -FilePath $ProjectPython -ArgumentList $ServerArguments -WorkingDirectory $ProjectRoot `
@@ -78,6 +81,11 @@ try {
         throw 'O LocaControl não iniciou. Veja data\logs\web.stderr.log.'
     }
     Write-Host "LocaControl iniciado em $Url (processo $($Process.Id)). Para encerrar, use 'Parar LocaControl'."
+    if ($FirstRun) {
+        Write-Host ''
+        Write-Host 'PRIMEIRO ACESSO: usuário "admin" e senha "admin".'
+        Write-Host 'O sistema exigirá uma nova senha (12 caracteres ou mais) antes de liberar o uso.'
+    }
     Open-App
 } finally {
     Pop-Location

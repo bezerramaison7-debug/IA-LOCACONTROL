@@ -24,6 +24,10 @@ def user_view(user: User) -> dict:
     }
 
 
+# Deliberately public first-run credential; the account is forced to change it at first login.
+DEFAULT_ADMIN = "admin"
+
+
 class IdentityService:
     def __init__(self, db: Session, actor: User | None = None, local: bool = False):
         self.db = db
@@ -69,6 +73,19 @@ class IdentityService:
             )
         user = self.create_user(username, name, password, ["ADMINISTRADOR"], must_change=False)
         self.audit("bootstrap.completed", "users", user.id)
+        return user
+
+    def bootstrap_default(self) -> User | None:
+        """First-run account for a single-machine install: admin/admin, unusable until changed.
+
+        Created only while the database has no user at all; never recreated afterwards.
+        """
+        if self.db.scalar(select(func.count()).select_from(User)):
+            return None
+        user = self.create_user(
+            DEFAULT_ADMIN, "Administrador", DEFAULT_ADMIN, ["ADMINISTRADOR"], must_change=True
+        )
+        self.audit("bootstrap.default_created", "users", user.id)
         return user
 
     def create_user(self, username, name, password, role_codes, must_change=True) -> User:

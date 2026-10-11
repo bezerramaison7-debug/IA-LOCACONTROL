@@ -325,3 +325,39 @@ def test_secure_cookie_setting_and_salted_hashes(client):
         "/api/auth/login", json={"username": "admin", "password": PASSWORD}, headers=HEADERS
     )
     assert "Secure" in response.headers["set-cookie"]
+
+
+def test_default_first_run_account_must_change_password(client):
+    from sqlalchemy.orm import Session as OrmSession
+
+    from app.auth.service import IdentityService as Identity
+
+    origin = {"Origin": "http://localhost:5173", "X-LocaControl-Request": "1"}
+    with OrmSession(client.app.state.engine) as db:
+        assert Identity(db, local=True).bootstrap_default() is not None
+        assert Identity(db, local=True).bootstrap_default() is None  # nunca recria
+        db.commit()
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin"}, headers=origin
+    )
+    assert login.status_code == 200 and login.json()["user"]["must_change_password"] is True
+    headers = {**origin, "X-CSRF-Token": login.json()["csrf_token"]}
+    # Enquanto a senha inicial não for trocada, nenhuma função do sistema é liberada.
+    assert client.get("/api/users").status_code == 403
+    assert client.get("/api/customers").status_code == 403
+    weak = {"current_password": "admin", "new_password": "admin"}
+    assert client.post("/api/auth/password", json=weak, headers=headers).status_code == 422
+    strong = {"current_password": "admin", "new_password": "Senha-nova-de-teste-1"}
+    assert client.post("/api/auth/password", json=strong, headers=headers).status_code == 204
+    client.cookies.clear()
+    old = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin"}, headers=origin
+    )
+    assert old.status_code == 401
+    again = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "Senha-nova-de-teste-1"},
+        headers=origin,
+    )
+    assert again.status_code == 200 and again.json()["user"]["must_change_password"] is False
+    assert client.get("/api/users").status_code == 200

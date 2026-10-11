@@ -39,11 +39,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\migrate.ps1
 
 Cria o banco e todas as tabelas.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\admin.ps1
-```
+### Primeiro acesso
 
-Cria o primeiro administrador. O comando pergunta usuário, nome e senha no próprio terminal; a senha não aparece na tela nem fica gravada em arquivo. **Execute este passo somente em banco novo, sem nenhum usuário.**
+Não é preciso criar usuário pelo terminal. Na primeira vez que **Iniciar LocaControl.cmd** encontra o banco sem nenhuma conta, ele cria o administrador inicial:
+
+- usuário: `admin`
+- senha: `admin`
+
+Ao entrar com essa senha, o sistema exige imediatamente uma senha nova, com 12 caracteres ou mais, e não libera nenhuma tela antes da troca. Depois disso a senha `admin` deixa de funcionar. A conta inicial só é criada enquanto o banco não tem nenhum usuário; ela nunca é recriada.
+
+**Faça o primeiro acesso e a troca de senha logo após instalar.** Até a troca, qualquer pessoa com acesso a este computador pode entrar como administrador.
+
+Quem preferir definir usuário e senha próprios desde o início pode executar, antes do primeiro início e num PowerShell aberto pelo Windows, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\admin.ps1`; nesse caso a conta `admin` não é criada.
 
 ## 4. Preencher os dados da locadora
 

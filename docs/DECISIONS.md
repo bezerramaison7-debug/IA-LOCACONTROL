@@ -2,6 +2,10 @@
 
 Convenção das ADRs de 11/10/2026: "decisão do usuário" é regra comercial respondida por ele; "decisão do implementador" é escolha técnica revisável, registrada para não ser confundida com regra de negócio. Autorização de processo dada pelo usuário em 11/10: commits por etapa validada na branch `dev/etapas-4-12`, a partir do baseline `2b3d1d2` em `master`.
 
+## ADR-022 — Conta inicial admin/admin com troca obrigatória (2026-10-11)
+
+ACEITA. Decisão do usuário: como o sistema roda na máquina do próprio usuário, o primeiro acesso passa a ser `admin` / `admin`, sem terminal. Substitui, para a instalação local, a regra da ADR-010 de não existir senha fixa. Decisão do implementador sobre a forma: a conta é criada por `scripts/launch.ps1` (`python -m app.auth.cli default`) somente quando a tabela de usuários está vazia, nunca recriada, e nasce com `must_change_password`, de modo que a API recusa qualquer função até a troca por uma senha de 12+ caracteres; a criação é auditada (`bootstrap.default_created`). O bootstrap interativo (`scripts/admin.ps1`) continua disponível. Risco aceito e documentado: entre a instalação e a troca, quem alcançar o sistema entra como administrador; por isso esta conta não deve existir em instalação exposta em rede ou na internet — antes de publicar, criar o administrador pelo bootstrap interativo ou trocar a senha antes de liberar o acesso.
+
 ## ADR-021 — Backup, restauração e inicialização no Windows (2026-10-11)
 
 ACEITA, backend e scripts da Etapa 11. Decisões do implementador, revisáveis.

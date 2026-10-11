@@ -4,6 +4,8 @@ Implementação da Etapa 2. O resultado da validação e o estado das migrations
 
 ## Primeiro administrador
 
+Desde 11/10/2026 (ADR-022) o atalho de início cria, em banco sem nenhum usuário, a conta `admin` com senha `admin` e troca obrigatória: até a troca por uma senha de 12+ caracteres a API responde 403 a qualquer função. A conta nunca é recriada. É uma credencial pública por definição: aceitável apenas na instalação local de máquina única, e a senha deve ser trocada logo após instalar. Em instalação acessível por rede, use o bootstrap interativo abaixo antes do primeiro início.
+
 Na raiz do projeto, após as migrations, execute em um terminal PowerShell interativo:
 
 ```powershell
