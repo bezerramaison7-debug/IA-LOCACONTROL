@@ -130,6 +130,18 @@ Todo arquivo é entregue por rota autenticada e autorizada, como anexo, sem cami
 
 Não há credencial fiscal em parte alguma: só existe o provedor de simulação. O retorno bruto do provedor é guardado para conciliação; um adapter real deverá remover credenciais antes de devolvê-lo (contrato descrito em `app/fiscal/provider.py`). Credenciais futuras ficam somente em `.env`.
 
+### Garantias acrescentadas pelas correções da auditoria (commit `b0d9ec4`)
+
+Conferidas no código e cobertas por testes nos módulos indicados. A auditoria independente foi somente leitura e cobriu o backend; **não cobriu o frontend, a importação de Excel nem as rotas de identidade**.
+
+- Portal não expõe motivo interno: os eventos de cancelamento e de encerramento aparecem para o cliente com texto fixo ("Contrato cancelado.", "Contrato encerrado."), nunca com o motivo escrito pela locadora (`app/portal/service.py`, `test_portal.py`).
+- Reenvio com a mesma chave de operação só é tratado como repetição se autor, contrato, data e itens (ou, no fiscal, cliente, contrato, período, valor e descrição) forem os mesmos; com conteúdo diferente responde **409**, sem gravar nada (`app/contracts/operations.py`, `app/fiscal/service.py`).
+- Verificação de backup exige manifesto completo: o banco precisa estar listado, nenhum arquivo do `.zip` pode estar fora do manifesto, todos os hashes precisam conferir e o banco precisa ter ao menos um usuário. Conjunto reprovado não é restaurado (`app/ops/backup.py`, `test_backups.py`).
+- Restauração serializada: backup e restauração usam a mesma trava de processo; os arquivos são extraídos e conferidos antes de qualquer dado vigente ser tocado, e, se a restauração falhar, a resposta informa a cópia de segurança criada.
+- Documento fiscal só é enviado, consultado ou cancelado no provedor e no ambiente em que foi criado; configuração diferente responde 409.
+- Renovação recusa a mesma unidade física informada mais de uma vez (achado de severidade alta).
+- Exportação em Excel grava como texto qualquer valor iniciado por "=", sem criar fórmula.
+
 ### Limites conhecidos
 
 Sem HTTPS configurado, sem antimalware nos uploads, sem imutabilidade da auditoria contra quem acessa o arquivo SQLite, sem criptografia dos conjuntos de backup e sem isolamento multiempresa. Nada foi publicado na internet.

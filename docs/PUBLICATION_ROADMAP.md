@@ -1,7 +1,7 @@
 # LocaControl — Roteiro até a publicação web
 
 Data de referência: 2026-10-11.
-Estado verificado: Etapas 0–3 concluídas; Etapa 4 PARCIAL (Excel real não enviado; conversão do histórico de contratos não implementada); Etapas 5–11 com backend implementado e testado; telas de orçamentos, contratos e ciclo operacional entregues; telas de dashboard real, relatórios, portal, fiscal e backups pendentes; Etapa 12 apenas iniciada (teste de aceite pela API). Nada foi publicado e nenhuma decisão de publicação (P1–P4) foi tomada.
+Estado verificado: Etapas 0–3 concluídas; Etapa 4 PARCIAL (Excel real não enviado; conversão do histórico de contratos não implementada); Etapas 5–11 com backend e telas implementados e testados (commit `82e0845`); Etapa 12 com a entrega técnica feita (auditoria do backend corrigida, teste de aceite, E2E e guias) e aceite do usuário pendente; versão 1.0 não declarada. Nada foi publicado e nenhuma decisão de publicação (P1–P4) foi tomada.
 
 Este documento organiza trabalho pendente, dependências e critérios de saída. Não substitui docs/DEVELOPMENT_PLAN.md nem autoriza execução das próximas etapas. Não contém estimativas de prazo ou percentuais sem base.
 
@@ -15,7 +15,7 @@ Este documento organiza trabalho pendente, dependências e critérios de saída.
 | Importador | Upload, análise dinâmica, mapeamento, DRY RUN, confirmação, origem e relatório implementados | Homologar o arquivo real enviado pela interface |
 | Contratos e renovações legados | Entidades de destino existem; conversão não implementada | Definir o mapeamento quando o Excel real for enviado |
 | Orçamentos, contratos e operação | Backend e telas entregues em 11/10 | Validar com o usuário e substituir o modelo de contrato provisório |
-| Dashboard, relatórios, portal, fiscal, backups | Backend entregue em 11/10; sem telas | Construir as telas sobre as APIs existentes |
+| Dashboard, relatórios, portal, fiscal, backups | Backend e telas entregues em 11/10 (`82e0845`) | Validar com o usuário |
 | Fiscal | Somente provedor de simulação | Regras da contabilidade, provedor e credenciais de sandbox |
 | Código | Histórico Git local na branch `dev/etapas-4-12` (baseline `2b3d1d2` em `master`); nenhum remoto configurado | Definir remoto privado quando autorizado |
 | Hospedagem | Sem deploy público | Preparar infraestrutura, persistência, HTTPS e operação |
@@ -28,7 +28,7 @@ Etapa 4 PARCIAL: mecanismo utilizável e testado com fixtures, sem pressupor for
 
 O acesso 127.0.0.1 é local e não constitui publicação pública.
 
-Atualização de 11/10/2026: backends das Etapas 5–11 implementados em um dia, com 133 testes de backend aprovados no commit `d3916f3`. Isso é evidência de testes automatizados com dados temporários, não homologação com dados da locadora nem aceite do usuário.
+Atualização de 11/10/2026: backends e telas das Etapas 5–11 implementados, com 141 testes de backend, 63 de frontend e 36 cenários de E2E real aprovados sobre o commit `82e0845`. Isso é evidência de testes automatizados com dados temporários, não homologação com dados da locadora nem aceite do usuário.
 
 ## 3. Etapas funcionais restantes do plano oficial
 
@@ -38,13 +38,13 @@ Atualização de 11/10/2026: backends das Etapas 5–11 implementados em um dia,
 | 5 | Orçamentos — backend e tela entregues | Validação pelo usuário | Regras confirmadas em 11/10 (ADR-014) |
 | 6 | Contratos e documentos — backend e tela entregues; modelo PROVISÓRIO | Substituir o modelo provisório pelo real; decidir upload do assinado e DOCX | Modelo real de contrato e dados da locadora para o cabeçalho |
 | 7 | Ciclo da locação — backend e tela entregues | Validação pelo usuário; decidir reserva na confirmação e registro de manutenção | Decisões de negócio (ADR-016) |
-| 8 | Dashboard e relatórios — backend entregue | Tela de relatórios e dashboard real (hoje demonstração) | APIs existentes |
-| 9 | Portal do cliente — backend entregue | Telas do portal e do vínculo conta–cliente | APIs existentes; uso remoto depende de publicação |
-| 10 | Faturamento/fiscal — backend em simulação | Telas; adapter de provedor real; homologação em sandbox | Regras da contabilidade, provedor escolhido e credenciais de teste |
-| 11 | Operação e recuperação — backend e scripts entregues | Tela de backups; ensaio de restauração com dados reais; adaptar à infraestrutura web escolhida | APIs existentes |
-| 12 | QA e release 1.0 — iniciada (teste de aceite pela API) | Auditoria funcional/segurança/UX, correções, E2E do fluxo integral pela interface, testes de upgrade/restore e guias finais | Telas das etapas 8–11 concluídas; não acrescentar funcionalidades |
+| 8 | Dashboard e relatórios — backend e telas entregues | Validação pelo usuário | Dados reais para conferir os indicadores |
+| 9 | Portal do cliente — backend e telas entregues | Validação pelo usuário | Uso remoto depende de publicação |
+| 10 | Faturamento/fiscal — backend e tela em simulação | Adapter de provedor real; homologação em sandbox | Regras da contabilidade, provedor escolhido e credenciais de teste |
+| 11 | Operação e recuperação — backend, tela de backups e scripts entregues | Ensaio de restauração com dados reais; primeira execução de `update.ps1`; adaptar à infraestrutura web escolhida | Dados reais |
+| 12 | QA e release 1.0 — entrega técnica feita (auditoria do backend corrigida, teste de aceite, E2E real e guias) | Aceite do usuário no navegador; auditoria não cobriu frontend, importação e identidade; teste de upgrade (`update.ps1`) e de restauração com dados reais | Usuário e insumos externos; não acrescentar funcionalidades |
 
-Entregáveis oficiais de release: RELEASE_NOTES_1.0.md, INSTALLATION.md, USER_GUIDE.md e ADMIN_GUIDE.md.
+Entregáveis oficiais de release: RELEASE_NOTES_1.0.md, INSTALLATION.md, USER_GUIDE.md e ADMIN_GUIDE.md — escritos em 11/10, ainda não commitados.
 
 A entrega completa segue o plano oficial. Antecipar uma versão menor ou adiar importador/portal/fiscal exige definição explícita de escopo e aceite; não está aprovado neste roteiro.
 
@@ -146,7 +146,7 @@ Ao final, validar saldos, snapshots, documentos, histórico, auditoria, permiss�
 
 ## 8. Próxima ação imediata
 
-Seguir o campo PRÓXIMA AÇÃO EXATA de docs/AI_HANDOFF.md: validar as telas de contratos/operação, construir as telas de dashboard real, relatórios, portal, fiscal e backups sobre as APIs existentes e então executar a etapa 12. Em paralelo, quando o usuário enviar o Excel real em Gestão → Importações, homologar a Etapa 4. Atualização: 2026-10-11.
+Seguir o campo PRÓXIMA AÇÃO EXATA de docs/AI_HANDOFF.md: não há implementação desbloqueada; os próximos passos dependem do usuário (Excel real, modelo de contrato, dados da locadora, definições fiscais, aceite no navegador, decisões de publicação e de mesclagem da branch). Atualização: 2026-10-11.
 
 Publicação: nenhuma ação de P1–P4 foi iniciada e este roteiro não autoriza deploy. As decisões da seção 4 continuam todas em aberto.
 

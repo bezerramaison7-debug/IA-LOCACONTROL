@@ -1,7 +1,7 @@
 # LocaControl — TRD: requisitos técnicos
 
 Versão documental 1.1 — 2026-10-11. Responsáveis: arquitetura, backend, frontend, dados, segurança e operação.
-Especificação da base existente e evolução. Atualizado após a implementação dos backends das etapas 5–11; estado e evidências em PROJECT_STATE.
+Especificação da base existente e evolução. Atualizado após a implementação dos backends e das telas das etapas 5–11 e da entrega técnica da etapa 12; estado e evidências em PROJECT_STATE.
 
 ## 1. Referências e limites
 [PRD](PRD.md), [ARCHITECTURE](ARCHITECTURE.md), [BACKEND_SCHEMA](BACKEND_SCHEMA.md), [SECURITY](SECURITY.md), [DATABASE](DATABASE.md), [DECISIONS](DECISIONS.md).
@@ -10,7 +10,7 @@ Preservar código, conta e banco existentes. Não executar bootstrap, reset ou m
 ## 2. Arquitetura
 Navegador → frontend React → API FastAPI → serviços/transações → SQLAlchemy → SQLite.
 Desenvolvimento: Vite em 127.0.0.1:5173 com proxy; build pode ser servido por FastAPI em 127.0.0.1:8000.
-Módulos de backend existentes: identidade, cadastros, importação, orçamentos, contratos/operação/documentos, relatórios, portal, fiscal (simulação) e backup. Telas existentes até 11/10: identidade, cadastros, estoque, preços, importações, orçamentos, contratos e ciclo operacional; as demais consomem APIs já prontas e estão pendentes.
+Módulos de backend existentes: identidade, cadastros, importação, orçamentos, contratos/operação/documentos, relatórios, portal, fiscal (simulação) e backup. Telas existentes em 11/10 (commit `82e0845`): identidade, cadastros, estoque, preços, importações, orçamentos, contratos, ciclo operacional, dashboard real, relatórios, portal do cliente, faturamento e fiscal (simulação) e backups. Nenhum item de menu aponta para página provisória.
 Domínio não deve depender de React ou detalhes HTTP.
 
 ## 3. Stack e configuração
@@ -37,14 +37,14 @@ SQLite local, nunca arquivo em pasta de rede. PostgreSQL exige adaptação de tr
 HashRouter mantém links diretos no build. TanStack Query gerencia dados do servidor; invalidar consultas após mutações coerentes.
 Formulários validam para UX, sem substituir backend. Conflito de versão oferece revisão; não sobrescrever silenciosamente.
 Autenticação não fica em localStorage. Sessão expirada remove conteúdo privado e conduz ao login.
-Telas futuras (dashboard real, relatórios, portal, fiscal, backups) devem possuir loading, vazio, erro, sucesso, sem permissão e conflito quando aplicável.
+Toda tela, inclusive as de dashboard, relatórios, portal, fiscal e backups, deve possuir loading, vazio, erro, sucesso, sem permissão e conflito quando aplicável.
 Temas e sidebar preservam preferências existentes. Não misturar fixtures com dados comerciais.
 
 ## 6. Backend e API
 Rotas delegam regras a serviços. Modelos, schemas, permissões e endpoints existentes são detalhados em BACKEND_SCHEMA.
 IDs internos separados de códigos comerciais. DELETE existente deve ser interpretado pelo serviço, sem presumir exclusão física.
 APIs futuras terão contrato definido antes da implementação: método/rota, request, response, permissões, erros, efeitos e idempotência.
-Numeração e confirmação comercial são protegidas por transação e unicidade: (year, sequence) nos orçamentos, (base_number, renewal_number) e quote_id nos contratos, request_key em retirada, devolução e documento fiscal.
+Numeração e confirmação comercial são protegidas por transação e unicidade: (year, sequence) nos orçamentos, (base_number, renewal_number) e quote_id nos contratos, request_key em retirada, devolução e documento fiscal (mesma chave com conteúdo diferente responde 409).
 Data comercial: fuso fixo UTC−3 em `app/core/clock.py`; instantes continuam inteiros UTC.
 
 ## 7. Banco e transações
@@ -75,7 +75,7 @@ Definir correlação, timeout, repetição, conciliação e callbacks conforme c
 Regras fiscais e espécie documental dependem de contabilidade; segredos somente em configuração segura.
 
 ## 11. Operação e publicação
-Local/LAN permanece base. Entregue em 11/10: inicialização e parada por atalho no Windows, logs do servidor em `data/logs`, health, backup/restauração e atualização que não toca em `data/` (ADR-021). Não há logging estruturado nem rotação de logs.
+Local/LAN permanece base. Entregue em 11/10: inicialização e parada por atalho no Windows, logs do servidor e mensagens da aplicação em `data/logs`, health, backup/restauração e atualização que não toca em `data/` (ADR-021). Não há logging estruturado nem rotação de logs.
 Web exige processo Python supervisionado, frontend, persistência, domínio/HTTPS, configuração segura e monitoramento.
 Definir capacidade, RPO e RTO antes de afirmar metas. Seguir PUBLICATION_ROADMAP; publicar requer autorização concreta.
 

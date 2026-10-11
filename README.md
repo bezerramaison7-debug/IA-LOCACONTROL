@@ -2,9 +2,9 @@
 
 Sistema local para gestão de locação de equipamentos e materiais de construção civil.
 
-**Estado em 11/10/2026.** Etapas 0–3 concluídas. Etapa 4 PARCIAL: upload e conversão do Excel funcionam, mas o arquivo real da locadora ainda não foi enviado e o histórico de contratos/renovações não tem conversão. Etapas 5–11: backend implementado e testado (orçamentos, contratos, retirada, renovação, devolução, relatórios, portal do cliente, fiscal em simulação, backup e restauração). Telas reais: identidade, clientes, produtos, equipamentos, estoque, preços, importações, orçamentos, contratos e ciclo operacional. **Ainda sem tela:** dashboard real (o atual é demonstração identificada), relatórios, portal do cliente, fiscal e backups. Etapa 12 apenas iniciada: existe o teste de aceite do cenário oficial pela API; auditoria, E2E pela interface e guias estão pendentes.
+**Estado em 11/10/2026.** Etapas 0–3 concluídas. Etapa 4 PARCIAL: upload e conversão do Excel funcionam, mas o arquivo real da locadora ainda não foi enviado e o histórico de contratos/renovações não tem conversão. Etapas 5–11: backend e telas implementados e testados (orçamentos, contratos, retirada, renovação, devolução, dashboard real, relatórios, portal do cliente, fiscal em simulação, backup e restauração); nenhum item de menu aponta para página provisória. Etapa 12: **entrega técnica feita** — auditoria independente do backend com 11 achados corrigidos, teste de aceite do cenário oficial pela API, E2E pela interface e guias de instalação, uso e administração. **A versão 1.0 não está declarada concluída:** falta o aceite do usuário no navegador e os insumos que só ele pode fornecer, listados em [RELEASE_NOTES_1.0](docs/RELEASE_NOTES_1.0.md).
 
-Limites que não devem ser confundidos com entrega: o modelo de contrato é PROVISÓRIO e identificado no PDF; o fiscal é só simulação, sem valor fiscal; nada foi homologado com dados reais nem publicado na internet. Guia: [Importar Excel](docs/EXCEL_IMPORT.md). Estado: [PROJECT_STATE](docs/PROJECT_STATE.md) e [AI_HANDOFF](docs/AI_HANDOFF.md); roteiro: [PUBLICATION_ROADMAP](docs/PUBLICATION_ROADMAP.md).
+Limites que não devem ser confundidos com entrega: o modelo de contrato é PROVISÓRIO e identificado no PDF; o fiscal é só simulação, sem valor fiscal; nada foi homologado com dados reais, validado pelo usuário nem publicado na internet. Guias: [Instalação](docs/INSTALLATION.md), [Uso](docs/USER_GUIDE.md), [Administração](docs/ADMIN_GUIDE.md) e [Importar Excel](docs/EXCEL_IMPORT.md). Estado: [PROJECT_STATE](docs/PROJECT_STATE.md) e [AI_HANDOFF](docs/AI_HANDOFF.md); roteiro: [PUBLICATION_ROADMAP](docs/PUBLICATION_ROADMAP.md).
 
 ## Requisitos
 
@@ -102,7 +102,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-backend.ps1
 
 Depois do build, inicie ou reinicie o backend e abra <http://localhost:8000/#/login>. Ele serve `frontend/dist` e mantém `/health`, `/docs` e `/openapi.json`. A navegação usa fragmentos; links diretos e atualização da página funcionam sem fallback adicional no servidor. Após autenticar, acesse Meu perfil e, como administrador, Usuários, Perfis e permissões e Auditoria pelo menu.
 
-Para explorar a interface, use o seletor de tema no menu ou em Configurações. O Dashboard ainda mostra dados de demonstração identificados; as demais telas do menu marcadas como prontas gravam dados reais. Faturamento, Fiscal e Relatórios ainda abrem uma página explicativa.
+Para explorar a interface, use o seletor de tema no menu ou em Configurações. Todas as telas do menu, inclusive o Dashboard, leem e gravam dados reais; não há dados de demonstração. Faturamento e fiscal opera somente em simulação, sem valor fiscal.
 
 ## Configuração e LAN
 
@@ -149,7 +149,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\migrate.ps1 -Actio
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\format.ps1
 ```
 
-Backend usa pytest e bancos SQLite temporários. Verifica saúde, migrations, CORS, autenticação, autorização, CSRF, expiração/revogação, bootstrap/recuperação, auditoria, rollback e proteção concorrente do primeiro/último administrador. Frontend usa Vitest/Testing Library para temas, componentes, navegação, health e autenticação. Validação final da Etapa 2: 35 testes backend e 25 frontend aprovados. Em 11/10/2026 a suíte de backend (`.\.venv\Scripts\python.exe -m pytest backend/tests -q -p no:cacheprovider`) passou com 133 testes no commit `d3916f3`, cobrindo também orçamentos, contratos, operação, relatórios, portal, fiscal e backups.
+Backend usa pytest e bancos SQLite temporários. Verifica saúde, migrations, CORS, autenticação, autorização, CSRF, expiração/revogação, bootstrap/recuperação, auditoria, rollback e proteção concorrente do primeiro/último administrador. Frontend usa Vitest/Testing Library para temas, componentes, navegação, health e autenticação. Validação final da Etapa 2: 35 testes backend e 25 frontend aprovados. Em 11/10/2026, sobre o commit `82e0845`, a suíte de backend (`.\.venv\Scripts\python.exe -m pytest backend/tests -q -p no:cacheprovider`) passou com 141 testes e 1 aviso, cobrindo também orçamentos, contratos, operação, relatórios, portal, fiscal, backups e o cenário oficial de aceite; o Vitest passou com 63 testes em 13 arquivos.
 
 Para verificar renderização e acessibilidade no Chromium, após o build:
 
@@ -169,9 +169,9 @@ Essa regressão visual simula a identidade nos testes. Para verificar autentica�
 .\.venv\Scripts\python.exe scripts/e2e-auth.py
 ```
 
-O script cria SQLite temporário, aplica migrations e usa um administrador exclusivamente de teste. Exercita login, rota solicitada, criação/edição de usuário, troca obrigatória de senha, acesso negado, logout, desativação e auditoria nos quatro viewports; encerra seu servidor e remove seu banco ao terminar. Relatório: `frontend/auth-playwright-report/index.html`; capturas: `frontend/auth-test-results`. Não cria contas no banco local.
+O script cria SQLite temporário, aplica migrations e usa um administrador exclusivamente de teste. Exercita, nos quatro viewports (1366×768, 1920×1080, 820×1180 e 390×844), nove roteiros: acesso (login, rota solicitada, criação/edição de usuário, troca obrigatória de senha, acesso negado, logout, desativação e auditoria), cadastros, importações, orçamentos, contratos e operação, relatórios, portal, fiscal e backups; encerra seu servidor e remove seu banco ao terminar. Relatório: `frontend/auth-playwright-report/index.html`; capturas: `frontend/auth-test-results`. Não cria contas no banco local.
 
-As duas suítes passaram: 16 cenários visuais e 4 reais, com 96 auditorias Axe sem violações detectadas. Isso não equivale a uma certificação completa de acessibilidade.
+Em 11/10/2026 as duas suítes passaram: 16 cenários visuais e 36 reais, com as verificações Axe e de rolagem horizontal previstas nos roteiros, nos temas claro e escuro. O E2E real não foi repetido depois de uma alteração posterior de duas frases de interface; ressalvas completas em [RELEASE_NOTES_1.0](docs/RELEASE_NOTES_1.0.md). Isso não equivale a uma certificação completa de acessibilidade nem a um aceite do usuário.
 
 O smoke cria banco temporário, aplica migrations, inicia Uvicorn e Vite em portas livres, verifica HTML compilado e proxy `/health`, e encerra apenas os processos criados por ele. Não modifica o banco de desenvolvimento. A prova de renderização no navegador é registrada na documentação da etapa.
 
@@ -201,9 +201,8 @@ backend/
 frontend/
   src/
     components/       Biblioteca visual acessível e health real
-    demo/             Fixtures visuais identificadas, sem persistência
     layout/           Shell, menu e navegação
-    pages/            Telas reais, dashboard demonstrativo, placeholders e 404
+    pages/            Telas reais e página 404
     auth/             Sessão, cliente HTTP e proteção de rotas
     theme/            Tema, sistema operacional e persistência
     lib/              Cliente HTTP, validação Zod e preferências
@@ -242,5 +241,12 @@ Migrations são explícitas, sem `create_all` no startup. O health retorna 200 s
 - [Esquema do back-end](docs/BACKEND_SCHEMA.md)
 - [Plano de implementação oficial](docs/DEVELOPMENT_PLAN.md)
 - [Prompt de continuação até a conclusão](docs/CONTINUE_PROMPT.md)
+
+## Guias da versão candidata 1.0
+- [Instalação](docs/INSTALLATION.md)
+- [Guia do usuário](docs/USER_GUIDE.md)
+- [Guia do administrador](docs/ADMIN_GUIDE.md)
+- [Notas da versão candidata 1.0](docs/RELEASE_NOTES_1.0.md)
+- [Importar Excel](docs/EXCEL_IMPORT.md)
 
 Documentos estruturados em 11/10/2026 e atualizados no mesmo dia após a implementação dos backends das etapas 5–11. Os guias de instalação, usuário e administração e as notas da versão 1.0 pertencem à etapa 12 e ainda não existem.

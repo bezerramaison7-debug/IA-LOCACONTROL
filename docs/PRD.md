@@ -20,11 +20,11 @@ Permissões efetivas são verificadas no backend. Necessidade de negócio não e
 
 ## 3. Escopo e baseline
 Entrega oficial: etapas 0–12 de [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md).
-Checkpoint de 11/10/2026: etapas 0–3 concluídas; etapa 4 parcial (Excel real não enviado); etapas 5–11 com backend implementado e testado (133 testes de backend aprovados no commit `d3916f3`); telas entregues para orçamentos, contratos e ciclo operacional; telas de dashboard real, relatórios, portal, fiscal e backups pendentes; etapa 12 apenas iniciada (teste de aceite pela API no commit `892b6bd`). Nada foi homologado com dados reais da locadora.
+Checkpoint de 11/10/2026: etapas 0–3 concluídas; etapa 4 parcial (Excel real não enviado); etapas 5–11 com backend e telas implementados e testados (141 testes de backend, 63 de frontend e 36 cenários de E2E real aprovados sobre o commit `82e0845`); etapa 12 com a entrega técnica feita (auditoria independente do backend corrigida, teste de aceite pela API, E2E pela interface e guias) e aceite do usuário pendente. A versão 1.0 não está declarada concluída. Nada foi homologado com dados reais da locadora nem validado pelo usuário no navegador.
 Fora do escopo confirmado: multiempresa, planos de assinatura, cobrança do próprio SaaS e implantação pública automática. Local/LAN é a arquitetura inicial. Preparação web segue [PUBLICATION_ROADMAP.md](PUBLICATION_ROADMAP.md).
 
 ## 4. Catálogo de requisitos e aceite
-Estados: E = implementado e coberto por testes automatizados; P = parcial (a coluna diz o que falta); F = futuro. E não significa homologação com dados reais. "API" indica backend entregue sem tela.
+Estados: E = implementado e coberto por testes automatizados; P = parcial (a coluna diz o que falta); F = futuro. E não significa homologação com dados reais nem aceite do usuário.
 
 | ID | Requisito | Estado | Dependência | Critério de aceite |
 | --- | --- | --- | --- | --- |
@@ -42,11 +42,11 @@ Estados: E = implementado e coberto por testes automatizados; P = parcial (a col
 | RF-REN-001 | Renovação total/parcial numerada | E — API e tela | Contrato/retirada | Próximo sufixo único; origem preservada; escolha de preço registrada |
 | RF-DEV-001 | Devolução parcial/total | E — API e tela | Retirada | Não excede pendente; registra condição; atualiza estoque e mantém saldo restante |
 | RF-MAN-001 | Encaminhamento e retorno de manutenção | P — devolução encaminha à manutenção e o retorno usa os movimentos de estoque; sem registro próprio de intervenção | Definição de escopo | Transições e histórico coerentes com condição da devolução |
-| RF-REL-001 | Dashboard, filtros e exportações reais | P — API entregue; dashboard da interface ainda é demonstração e não há tela de relatórios | Telas | Indicadores reconciliáveis; receita contratada distinta de pagamento recebido |
-| RF-POR-001 | Portal com dados próprios | P — API entregue e isolamento testado; sem tela | Telas | Consultas por ID e downloads isolados; solicitação não cria renovação definitiva |
-| RF-FIS-001 | Faturamento e integração fiscal | P — API com provedor de simulação; sem tela, sem provedor real, sem regra tributária | Contabilidade, provedor e sandbox | Estados e retornos rastreáveis; sandbox real homologado antes de produção |
-| RF-OPS-001 | Backup, restore e atualização | P — API de backup/restauração e scripts Windows entregues e testados; sem tela de backups | Telas | Restauração isolada recupera conjunto completo; atualização preserva conta/dados |
-| RF-REL-002 | Release 1.0 e guias | F | Todos os critérios obrigatórios | Fluxo integral, segurança e recuperação comprovados |
+| RF-REL-001 | Dashboard, filtros e exportações reais | E — API e telas (Dashboard real, Relatórios e resumo do cliente) | Contratos | Indicadores reconciliáveis; receita contratada distinta de pagamento recebido |
+| RF-POR-001 | Portal com dados próprios | E — API e telas; isolamento testado; uso fora do computador da locadora depende de publicação | Vínculo conta–cliente | Consultas por ID e downloads isolados; solicitação não cria renovação definitiva |
+| RF-FIS-001 | Faturamento e integração fiscal | P — API e tela com provedor de simulação; sem provedor real, sem regra tributária | Contabilidade, provedor e sandbox | Estados e retornos rastreáveis; sandbox real homologado antes de produção |
+| RF-OPS-001 | Backup, restore e atualização | P — API, tela de backups e scripts Windows entregues e testados; falta ensaio de restauração com dados reais e `update.ps1` nunca foi executado | Dados reais | Restauração isolada recupera conjunto completo; atualização preserva conta/dados |
+| RF-REL-002 | Release 1.0 e guias | P — guias escritos e verificação automatizada feita; falta o aceite do usuário e os insumos externos | Todos os critérios obrigatórios | Fluxo integral, segurança e recuperação comprovados |
 
 ## 5. Regras comerciais
 - Dinheiro exato: Decimal e centavos; quantidades em milésimos no banco atual.

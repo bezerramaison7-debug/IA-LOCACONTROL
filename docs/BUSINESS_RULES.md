@@ -132,6 +132,10 @@ Backup automático configurável por ativação, horário, diretório e retenç�
 
 Confirmado em 2026-10-11 (Etapa 11, backend e scripts): o backup é um conjunto `.zip` com banco, importações, documentos, arquivos fiscais e manifesto; backup automático diário é opcional (desativado por padrão) com horário, pasta e retenção configuráveis; a restauração exige digitar `RESTAURAR <nome do backup>` e a senha do próprio usuário, cria cópia prévia e não apaga arquivos atuais. Detalhes na ADR-021.
 
+Regra do backup automático (corrigida em `b0d9ec4`): passado o horário configurado, o backup do dia só é dispensado se já existir um backup regular feito **depois** desse horário. Um backup manual feito mais cedo no mesmo dia não o substitui, porque não cobre o trabalho do dia; as cópias `_pre-restore` também não contam. A retenção remove apenas backups regulares: cópias `_pre-restore` e `pre-upgrade-*.db` nunca são apagadas pelo sistema.
+
+A tela de backups (Gestão → Backups) existe desde o commit `82e0845`.
+
 Release 1.0 depende do fluxo completo cliente → produto/preço/estoque → orçamento aprovado → contrato → retirada → renovação → devolução parcial → nova renovação → devolução total → encerramento. Validar estoque, histórico, auditoria, backups/restauração, migrations de banco vazio e atualização, temas, resoluções e erros de entrada. Criar testes E2E e guias finais; não declarar pronta com base apenas em compilação.
 
 ## UX transversal

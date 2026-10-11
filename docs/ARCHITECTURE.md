@@ -23,15 +23,15 @@ Monorepo local com `frontend/`, `backend/`, `scripts/` e `docs/`. Frontend React
 - `backend/app/ops`: backup, verificação, agendador diário e restauração (`backup.py`).
 - `backend/app/integrations`: pacote reservado e vazio; o provedor fiscal ficou em `backend/app/fiscal`.
 - `frontend/src/lib`: comunicação HTTP e validação de respostas.
-- `frontend/src/components`: biblioteca visual acessível, formulários de prévia e diagnóstico real.
+- `frontend/src/components`: biblioteca visual acessível e diagnóstico real.
 - `frontend/src/theme`: preferência visual e sincronização com sistema/storage.
 - `frontend/src/layout`: shell, navegação, busca de páginas e breadcrumbs.
-- `frontend/src/pages`: telas reais de identidade, cadastros, estoque, preços, importações, orçamentos, contratos e ciclo operacional; dashboard ainda demonstrativo; placeholders explícitos para módulos sem tela e 404.
-- `frontend/src/demo`: fixtures visuais isoladas, sem persistência comercial (ainda usadas pelo dashboard).
+- `frontend/src/pages`: telas reais de identidade, cadastros, estoque, preços, importações, orçamentos, contratos, ciclo operacional, dashboard, relatórios, portal, fiscal e backups; `Placeholder` atende apenas endereços inexistentes (404).
+- `frontend/src/demo` foi removido no commit `82e0845`: não há fixtures de demonstração na aplicação.
 
 Diretórios reservados não representam funcionalidades implementadas. A Etapa 0 implementou saúde técnica e conexão; a Etapa 1 acrescentou a fundação visual. A Etapa 2 implementa identidade em backend/app/auth, autenticação frontend em frontend/src/auth e telas Login/Profile/Users/Roles/Audit. Em 08/10/2026 a Etapa 3 foi concluída: masters real no backend e cinco telas persistentes no frontend. Etapa 4 implementa backend/app/imports e tela Imports, com upload multipart, openpyxl, análise dinâmica, mapeamento, prévia, confirmação, lotes/origens e relatório. Banco local 0004_imports. Health verifica compatibilidade do schema. Excel real e histórico de contratos/renovações ainda requerem homologação.
 
-Em 11/10/2026 foram implementados os backends das Etapas 5 a 11 (módulos acima, migrations 0005–0010, banco local em 0010_backups). Dependências entre módulos: contratos reutilizam o cálculo e os preços de orçamentos; relatórios, portal e fiscal leem contratos; `masters` consulta a custódia de contratos para impedir ajuste manual contraditório (import local para evitar ciclo); backup lê as pastas de importações, documentos e fiscal. O `lifespan` do FastAPI inicia o agendador de backup quando `LOCACONTROL_BACKUP_SCHEDULER` está ativo. Telas: orçamentos, contratos e ciclo operacional entregues; o dashboard da interface ainda usa a demonstração e não há telas de relatórios, portal, fiscal e backups.
+Em 11/10/2026 foram implementados os backends das Etapas 5 a 11 (módulos acima, migrations 0005–0010, banco local em 0010_backups). Dependências entre módulos: contratos reutilizam o cálculo e os preços de orçamentos; relatórios, portal e fiscal leem contratos; `masters` consulta a custódia de contratos para impedir ajuste manual contraditório (import local para evitar ciclo); backup lê as pastas de importações, documentos e fiscal. O `lifespan` do FastAPI inicia o agendador de backup quando `LOCACONTROL_BACKUP_SCHEDULER` está ativo. Telas: todas entregues até o commit `82e0845` (orçamentos, contratos, ciclo operacional, dashboard real, relatórios, portal, fiscal e backups). `create_app` configura o log de mensagens da aplicação (`2036cea`). Backup e restauração compartilham uma trava de processo, de modo que duas operações não se sobrepõem.
 
 ## Execução
 
@@ -57,7 +57,7 @@ Mutações usam serviço de identidade e transação SQLite com BEGIN IMMEDIATE;
 
 ## Qualidade
 
-Backend: pytest com bancos temporários e FastAPI TestClient; Ruff para lint/formatação. Frontend: Vitest + Testing Library, TypeScript, ESLint e Prettier. Playwright/Chromium e Axe verificam temas, navegação, acessibilidade e quatro viewports. Smoke HTTP verifica os dois processos e o proxy real. Fixtures da aplicação são exclusivamente visuais nesta etapa; interceptação do health existe somente no E2E, nunca no HealthPanel.
+Backend: pytest com bancos temporários e FastAPI TestClient; Ruff para lint/formatação. Frontend: Vitest + Testing Library, TypeScript, ESLint e Prettier. Playwright/Chromium e Axe verificam temas, navegação, acessibilidade e quatro viewports. Smoke HTTP verifica os dois processos e o proxy real. A aplicação não contém fixtures; dados simulados existem somente nos testes. Interceptação do health existe somente no E2E, nunca no HealthPanel.
 
 ## Publicação pública — planejamento pendente
 

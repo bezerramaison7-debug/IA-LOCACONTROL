@@ -1,6 +1,24 @@
 # LocaControl — Changelog
 
+## 2026-10-11 — Fechamento técnico da etapa 12: telas das etapas 8 a 11, auditoria, aceite e guias
+
+Commits de `2036cea` a `82e0845` na branch `dev/etapas-4-12`. **Entrega técnica verificada por testes automatizados; a versão 1.0 não foi declarada concluída nem homologada pelo usuário.**
+
+- Telas finais (`82e0845`): Dashboard real ("Visão geral") sem dados de demonstração; Relatórios (`/relatorios`); resumo do cliente em Clientes; Portal do cliente (`/portal/*`); Faturamento e fiscal (`/faturamento`, com `/fiscal` redirecionando), sempre identificando a simulação; Backups (`/backups`, em Gestão); "Vincular cliente" em Usuários; solicitações do portal em Renovações; filtros avançados em Contratos. Removidos `frontend/src/demo`, o formulário e a tabela de demonstração. Nenhum item de menu aponta para página provisória.
+- Auditoria independente do backend, somente leitura: 11 achados, 1 de severidade alta (renovação com a mesma unidade física repetida perdia uma unidade). Não cobriu frontend, importação de Excel nem rotas de identidade.
+- Correções da auditoria (`b0d9ec4`, 7 testes novos): renovação recusa unidade repetida; verificação de backup exige manifesto completo, banco listado e ao menos um usuário; restauração prepara os arquivos antes de tocar nos dados, é serializada e informa a cópia de segurança se falhar; portal não mostra o motivo interno de cancelamento/encerramento; reenvio com a mesma chave e conteúdo diferente vira conflito (retirada, devolução e fiscal); documento fiscal só fala com o provedor e o ambiente em que foi criado; buscas e datas extremas não geram erro interno; modelo de contrato valida blocos; exportação não grava fórmula; backup manual feito antes do horário não suprime o automático do dia; scripts toleram stderr do Alembic, porta alternativa e PID inválido.
+- Teste de aceite (`892b6bd`): `backend/tests/test_release_journey.py` percorre pela API o cenário oficial de 26 passos.
+- Log de mensagens da aplicação e variáveis novas no `.env.example` (`2036cea`).
+- Guias da etapa 12 escritos e ainda não commitados: INSTALLATION, ADMIN_GUIDE, USER_GUIDE e RELEASE_NOTES_1.0.
+- Verificação observada sobre `82e0845`: pytest 141 aprovados e 1 aviso; Ruff sem erros; ESLint e Prettier sem erros; Vitest 63 testes em 13 arquivos; build concluído com aviso de chunk acima de 500 kB; E2E real 36 cenários (9 specs em 1366×768, 1920×1080, 820×1180 e 390×844, com Axe e overflow nos temas claro e escuro conforme os specs); visual 16; smoke aprovado; `launch.ps1`/`stop.ps1` exercitados em portas alternativas.
+- Ressalvas: o E2E não foi repetido depois da alteração de duas frases em `Roles.tsx` e `Imports.tsx` (lint, format, Vitest, build e smoke foram); uma falha intermitente de `backups.spec.ts` foi relatada numa execução anterior, sem causa identificada, e não se repetiu; `update.ps1` não foi executado; nada foi verificado com dados reais, por usuário humano ou com leitor de tela.
+- Banco local inalterado: revisão 0010_backups, uma conta, sem dados comerciais, nenhum Excel enviado.
+- Pendente, tudo dependente do usuário: Excel real e, depois, conversão do histórico de contratos (IMP-04B); modelo real de contrato; dados da locadora no `.env`; regras fiscais, provedor e credenciais de teste; aceite no navegador; decisões de publicação; decisão sobre mesclar a branch em `master`.
+- Documentação atualizada: RELEASE_NOTES_1.0 (verificação), PROJECT_STATE, AI_HANDOFF, PRD, TRD, APP_FLOW, ARCHITECTURE, SECURITY, BUSINESS_RULES, PUBLICATION_ROADMAP e README.
+
 ## 2026-10-11 — Backends das etapas 5 a 11, telas de orçamentos e contratos
+
+Registro do estado no commit `892b6bd`. Os itens "sem tela", os números de teste e a lista de pendências abaixo foram superados pela entrada acima.
 
 Commits na branch `dev/etapas-4-12`, do baseline `2b3d1d2` (em `master`) até `892b6bd`.
 

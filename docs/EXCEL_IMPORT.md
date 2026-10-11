@@ -19,7 +19,7 @@ O DRY RUN não grava cadastros, movimentos, preços, auditoria ou origem de linh
 
 Fórmulas usam somente o resultado salvo no Excel e geram aviso. Sem resultado salvo, a linha exige recálculo/salvamento no Excel. Macros e referências externas não são executadas. Mesclas não preenchem células vazias automaticamente.
 
-Contratos e renovações aguardam as etapas correspondentes. Informações sem campo de destino aparecem como pendentes e ficam preservadas no original. A análise real depende do arquivo que o cliente enviar; fixtures de teste não comprovam conversão integral do histórico da empresa.
+O histórico de contratos e renovações da planilha ainda não é convertido: os módulos de contrato existem, mas o mapeamento do histórico depende do arquivo real e não foi implementado. Informações sem campo de destino aparecem como pendentes e ficam preservadas no original. A análise real depende do arquivo que o cliente enviar; fixtures de teste não comprovam conversão integral do histórico da empresa.
 
 Limites: 10 MB por upload; 30 MB expandido; 2.000 entradas ZIP; até 10.000 linhas de dados por aba, 200 colunas e 200.000 células no arquivo. .xls antigo deve ser salvo como .xlsx no Excel. Arquivos criptografados/protegidos ou inválidos são rejeitados.
 
