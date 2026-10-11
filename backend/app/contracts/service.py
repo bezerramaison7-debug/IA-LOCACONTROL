@@ -574,7 +574,20 @@ def document_view(row: ContractDocument) -> dict:
     }
 
 
-def page(db, soon_days=3, q="", status=None, customer_id=None, offset=0, limit=20):
+def page(
+    db,
+    soon_days=3,
+    q="",
+    status=None,
+    customer_id=None,
+    product="",
+    equipment="",
+    period=None,
+    start_from=None,
+    start_to=None,
+    offset=0,
+    limit=20,
+):
     today = business_today()
     soon = (today + timedelta(days=soon_days)).isoformat()
     stmt = select(Contract).join(Customer, Customer.id == Contract.customer_id)
@@ -612,6 +625,38 @@ def page(db, soon_days=3, q="", status=None, customer_id=None, offset=0, limit=2
         stmt = stmt.where(Contract.status == status)
     if customer_id is not None:
         stmt = stmt.where(Contract.customer_id == customer_id)
+    if product or period:
+        lines = select(ContractItem.contract_id)
+        if product:
+            lines = lines.where(
+                or_(
+                    ContractItem.product_code.icontains(product, autoescape=True),
+                    ContractItem.product_name.icontains(product, autoescape=True),
+                )
+            )
+        if period:
+            lines = lines.where(ContractItem.period == period)
+        stmt = stmt.where(Contract.id.in_(lines))
+    if equipment:
+        # Any unit that is or was under the contract, by code, asset tag or serial number.
+        stmt = stmt.where(
+            Contract.id.in_(
+                select(ContractItem.contract_id)
+                .join(ItemUnit, ItemUnit.contract_item_id == ContractItem.id)
+                .join(Equipment, Equipment.id == ItemUnit.equipment_id)
+                .where(
+                    or_(
+                        Equipment.code.icontains(equipment, autoescape=True),
+                        Equipment.asset_tag.icontains(equipment, autoescape=True),
+                        Equipment.serial_number.icontains(equipment, autoescape=True),
+                    )
+                )
+            )
+        )
+    if start_from:
+        stmt = stmt.where(Contract.start_date >= start_from.isoformat())
+    if start_to:
+        stmt = stmt.where(Contract.start_date <= start_to.isoformat())
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = list(
         db.scalars(

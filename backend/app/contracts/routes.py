@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -9,6 +10,7 @@ from app.contracts import schemas as s
 from app.contracts.documents import DocumentService
 from app.contracts.operations import OperationService
 from app.contracts.service import ContractService, page
+from app.masters.schemas import Period
 
 router = APIRouter(prefix="/api/contracts", tags=["Contratos"])
 Read = Annotated[User, Depends(require("contracts.read"))]
@@ -52,11 +54,27 @@ def listing(
     q: Search = "",
     status: s.Status | None = None,
     customer_id: int | None = None,
+    product: Search = "",
+    equipment: Search = "",
+    period: Period | None = None,
+    start_from: date | None = None,
+    start_to: date | None = None,
     offset: Offset = 0,
     limit: Limit = 20,
 ):
     return page(
-        db, soon(request), q=q, status=status, customer_id=customer_id, offset=offset, limit=limit
+        db,
+        soon(request),
+        q=q,
+        status=status,
+        customer_id=customer_id,
+        product=product.strip(),
+        equipment=equipment.strip(),
+        period=period,
+        start_from=start_from,
+        start_to=start_to,
+        offset=offset,
+        limit=limit,
     )
 
 

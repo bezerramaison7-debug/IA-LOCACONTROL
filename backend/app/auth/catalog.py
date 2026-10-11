@@ -28,6 +28,7 @@ PERMISSIONS = {
     "contracts.negotiate": "Alterar o preço de tabela em contratos e renovações",
     "contracts.configure": "Configurar numeração e modelos de contrato",
     "operations.write": "Registrar retiradas e devoluções",
+    "reports.read": "Consultar e exportar relatórios",
 }
 ROLES = {
     "ADMINISTRADOR": "Administrador",

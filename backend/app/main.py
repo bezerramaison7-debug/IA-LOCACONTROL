@@ -17,6 +17,7 @@ from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
 from app.persistence.database import build_engine
 from app.quotes.routes import router as quotes_router
+from app.reports.routes import router as reports_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -73,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(imports_router)
     app.include_router(quotes_router)
     app.include_router(contracts_router)
+    app.include_router(reports_router)
     dist = PROJECT_ROOT / "frontend" / "dist"
     if dist.is_dir():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
