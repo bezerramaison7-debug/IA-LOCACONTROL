@@ -510,3 +510,60 @@ def test_concurrent_renewals_create_a_single_next_number(client, admin, world):
         assert sorted(executor.map(renew, [1, 2])) == [201, 409]
     chain = client.get(f"/api/contracts/{contract['id']}").json()["chain"]
     assert [c["number"] for c in chain] == ["1", "1.1"]
+
+
+def test_manual_stock_edits_cannot_contradict_contract_custody(client, admin, world):
+    person, scaffold, generator, units = world
+    contract = confirmed(
+        client,
+        admin,
+        person,
+        [line(scaffold["id"], "4.000", "SEMANAL", 1), line(generator["id"], "1.000", "DIARIA", 1)],
+    )
+    call(
+        client,
+        admin,
+        contract["id"],
+        "withdrawals",
+        withdrawal(
+            [
+                {"contract_item_id": by_code(contract, "AND-1")["id"], "quantity": "4.000"},
+                {
+                    "contract_item_id": by_code(contract, "GER-1")["id"],
+                    "quantity": "1.000",
+                    "equipment_ids": [units[0]["id"]],
+                },
+            ]
+        ),
+    )
+
+    def manual(quantity, source, target):
+        body = {
+            "product_id": scaffold["id"],
+            "quantity": quantity,
+            "from_status": source,
+            "to_status": target,
+            "reason": "Ajuste manual de estoque",
+            "request_key": str(uuid4()),
+        }
+        return client.post("/api/stock/movements", json=body, headers=admin[1])
+
+    blocked = manual("1.000", "LOCADO", "DISPONIVEL")
+    assert blocked.status_code == 409 and "contrato" in blocked.json()["detail"]
+    # Locação lançada à mão, fora de contrato, continua ajustável pelo estoque.
+    assert manual("2.000", "DISPONIVEL", "LOCADO").status_code == 201
+    assert manual("3.000", "LOCADO", "DISPONIVEL").status_code == 409
+    assert manual("2.000", "LOCADO", "DISPONIVEL").status_code == 201
+    unit = client.get(f"/api/equipment/{units[0]['id']}").json()
+    change = {"version": unit["version"], "status": "DISPONIVEL", "reason": "Ajuste manual"}
+    held = client.post(f"/api/equipment/{unit['id']}/status", json=change, headers=admin[1])
+    assert held.status_code == 409 and "contrato 1" in held.json()["detail"]
+    free = client.get(f"/api/equipment/{units[1]['id']}").json()
+    change = {"version": free["version"], "status": "MANUTENCAO", "reason": "Revisão preventiva"}
+    assert (
+        client.post(
+            f"/api/equipment/{free['id']}/status", json=change, headers=admin[1]
+        ).status_code
+        == 200
+    )
+    assert balances(client, "AND-1")["LOCADO"] == "4.000"

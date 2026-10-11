@@ -181,6 +181,36 @@ class MasterService:
                 result[status] -= total
         return result
 
+    # Contracts own what is out with customers; manual stock edits must not contradict them.
+    # Imported inside the methods: the contracts package itself depends on this module.
+
+    def contract_custody(self, product) -> int:
+        """Quantity (milli) of a quantity-controlled product held under active contracts."""
+        from app.contracts.models import Contract, ContractItem
+        from app.contracts.service import balance, quantities
+
+        items = list(
+            self.db.scalars(
+                select(ContractItem)
+                .join(Contract, Contract.id == ContractItem.contract_id)
+                .where(ContractItem.product_id == product.id, Contract.status == "ATIVO")
+            )
+        )
+        moved = quantities(self.db, items)
+        return sum(balance(item, moved[item.id])["outstanding"] for item in items)
+
+    def contract_holding(self, equipment) -> str | None:
+        """Number of the contract under which this physical unit is with a customer."""
+        from app.contracts.models import Contract, ContractItem, ItemUnit
+
+        contract = self.db.scalar(
+            select(Contract)
+            .join(ContractItem, ContractItem.contract_id == Contract.id)
+            .join(ItemUnit, ItemUnit.contract_item_id == ContractItem.id)
+            .where(ItemUnit.equipment_id == equipment.id, ItemUnit.state == "EM_POSSE")
+        )
+        return contract.number if contract else None
+
     def stock_view(self, product):
         return {
             **view(product),
@@ -217,6 +247,14 @@ class MasterService:
             raise HTTPException(409, "Estoque baixado não pode retornar por transferência.")
         if payload.from_status and self.balances(product)[payload.from_status] < quantity:
             raise HTTPException(409, "Saldo insuficiente. O estoque não pode ficar negativo.")
+        if payload.from_status == "LOCADO":
+            held = self.contract_custody(product)
+            if self.balances(product)["LOCADO"] - quantity < held:
+                raise HTTPException(
+                    409,
+                    "Esta quantidade está com clientes por contrato. Registre a devolução no "
+                    "contrato em vez de movimentar o estoque manualmente.",
+                )
         if self.balances(product)[payload.to_status] + quantity > 999999999000:
             raise HTTPException(422, "Saldo excede o limite permitido.")
         movement = StockMovement(
@@ -239,6 +277,13 @@ class MasterService:
             )
         if payload.status == "BAIXADO" and row.status in {"RESERVADO", "LOCADO"}:
             raise HTTPException(409, "Libere a reserva ou locação antes de baixar a unidade.")
+        number = self.contract_holding(row)
+        if number:
+            raise HTTPException(
+                409,
+                f"Esta unidade está com o cliente no contrato {number}. Registre a devolução "
+                "no contrato em vez de alterar a situação manualmente.",
+            )
         before = view(row)
         movement = StockMovement(
             product_id=row.product_id,
