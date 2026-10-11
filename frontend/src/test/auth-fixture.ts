@@ -1,0 +1,32 @@
+// Test-only identity; never imported by production code.
+export const adminSession = {
+  user: {
+    id: 1,
+    username: 'admin',
+    name: 'Administrador de teste',
+    is_active: true,
+    must_change_password: false,
+    role_codes: ['ADMINISTRADOR'],
+    permissions: [
+      'workspace.view',
+      'users.read',
+      'users.write',
+      'roles.read',
+      'roles.write',
+      'audit.read',
+      'customers.read',
+      'customers.write',
+      'products.read',
+      'products.write',
+      'equipment.read',
+      'equipment.write',
+      'stock.read',
+      'stock.write',
+      'prices.read',
+      'prices.write',
+    ],
+    created_at: 1789254000,
+    updated_at: 1789254000,
+  },
+  csrf_token: 'test-only-csrf',
+}
