@@ -29,6 +29,7 @@ PERMISSIONS = {
     "contracts.configure": "Configurar numeração e modelos de contrato",
     "operations.write": "Registrar retiradas e devoluções",
     "reports.read": "Consultar e exportar relatórios",
+    "portal.access": "Acessar o portal do cliente com os próprios dados",
 }
 ROLES = {
     "ADMINISTRADOR": "Administrador",
