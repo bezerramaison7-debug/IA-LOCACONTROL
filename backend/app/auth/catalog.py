@@ -29,6 +29,8 @@ PERMISSIONS = {
     "contracts.configure": "Configurar numeração e modelos de contrato",
     "operations.write": "Registrar retiradas e devoluções",
     "reports.read": "Consultar e exportar relatórios",
+    "fiscal.read": "Consultar documentos fiscais e retornos do provedor",
+    "fiscal.write": "Criar, enviar e cancelar documentos fiscais",
     "portal.access": "Acessar o portal do cliente com os próprios dados",
 }
 ROLES = {

@@ -3,6 +3,7 @@ from alembic import context
 from app.auth import models  # noqa: F401 — register identity metadata for Alembic
 from app.contracts import models as contract_models  # noqa: F401
 from app.core.config import Settings
+from app.fiscal import models as fiscal_models  # noqa: F401
 from app.imports import models as import_models  # noqa: F401
 from app.masters import models as master_models  # noqa: F401
 from app.persistence.base import Base

@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     document_directory: Path = PROJECT_ROOT / "data" / "documents"
     # An active contract is shown as "vencendo" this many days before its expected return.
     contract_due_soon_days: int = Field(default=3, ge=0, le=60)
+    # "fake" is the simulation. A real adapter needs sandbox credentials supplied via .env.
+    fiscal_provider: str = "fake"
+    fiscal_directory: Path = PROJECT_ROOT / "data" / "fiscal"
+    # Free text agreed with the accountant; the system does not infer the tax document type.
+    fiscal_document_kind: str = ""
     # Printed on commercial documents; set the real company data in .env.
     company_name: str = "LocaControl"
     company_document: str = ""

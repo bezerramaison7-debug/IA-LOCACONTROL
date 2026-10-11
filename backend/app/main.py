@@ -13,6 +13,7 @@ from app.api.health import router as health_router
 from app.auth.routes import router as identity_router
 from app.contracts.routes import router as contracts_router
 from app.core.config import PROJECT_ROOT, Settings
+from app.fiscal.routes import router as fiscal_router
 from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
 from app.persistence.database import build_engine
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(contracts_router)
     app.include_router(reports_router)
     app.include_router(portal_router)
+    app.include_router(fiscal_router)
     dist = PROJECT_ROOT / "frontend" / "dist"
     if dist.is_dir():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")

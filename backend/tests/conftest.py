@@ -43,6 +43,7 @@ def client(migrated_config, tmp_path):
         database_url=migrated_config.attributes["database_url"],
         # Generated documents must never land in the real data directory.
         document_directory=tmp_path / "documents",
+        fiscal_directory=tmp_path / "fiscal",
     )
     with TestClient(create_app(settings)) as client:
         yield client
