@@ -200,6 +200,10 @@ class QuoteService:
         }
 
     def build_item(self, position, line, start: date, previous: QuoteItem | None) -> QuoteItem:
+        return QuoteItem(**self.line_fields(position, line, start, previous))
+
+    def line_fields(self, position, line, start: date, previous) -> dict:
+        """Priced line shared by quotes and contracts; `previous` is a saved item snapshot."""
         product = self.product(line.product_id)
         quantity_milli = int(line.quantity * 1000)
         if product.individual_tracking and quantity_milli % 1000:
@@ -225,7 +229,7 @@ class QuoteService:
         total = calc.item_total_cents(quantity_milli, unit, line.period_count)
         if total > calc.MAX_CENTS:
             raise HTTPException(422, "Valor do item excede o limite permitido.")
-        return QuoteItem(
+        return dict(
             position=position,
             product_id=product.id,
             product_code=product.code,

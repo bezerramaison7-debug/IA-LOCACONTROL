@@ -89,6 +89,8 @@ Testes backend verificam sessão, expiração, revogação, senhas, CSRF/origens
 
 ## Módulos comerciais e upload — 2026-10-08
 
+Etapa 5 adiciona quotes.read, quotes.write, quotes.approve e quotes.negotiate. Alterar o preço de tabela em um orçamento exige quotes.negotiate, verificada no serviço; quem não a possui pode manter um preço já negociado, mas não alterá-lo. O PDF do orçamento exige sessão e quotes.read. Total de permissões: 22.
+
 Etapa 3 adiciona dez permissões de leitura/escrita. Etapa 4 adiciona imports.read/write, inicialmente para administrador; conversão também exige escrita no módulo de destino. Não conceder imports.read indiscriminadamente: original/relatórios contêm dados da empresa.
 
 Uploads exigem sessão, CSRF e origem; original usa UUID gerado, nunca caminho enviado pelo cliente. Leitura .xlsx/.xlsm com openpyxl e defusedxml, limite de tamanho/expansão/células, sem executar macros/fórmulas/referências externas. Downloads são protegidos e anexos, sem caminhos expostos. Arquivos preservados fora do Git; incluir data/imports em backup com o banco.

@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # Enable behind HTTPS; local loopback uses HTTP.
     import_directory: Path = PROJECT_ROOT / "data" / "imports"
     session_hours: int = Field(default=8, ge=1, le=24)
+    # Generated contract PDFs; back up together with the database and imports.
+    document_directory: Path = PROJECT_ROOT / "data" / "documents"
+    # An active contract is shown as "vencendo" this many days before its expected return.
+    contract_due_soon_days: int = Field(default=3, ge=0, le=60)
     # Printed on commercial documents; set the real company data in .env.
     company_name: str = "LocaControl"
     company_document: str = ""

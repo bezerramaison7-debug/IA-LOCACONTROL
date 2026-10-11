@@ -63,7 +63,18 @@ entity_id é referência polimórfica inteira, não FK comercial genérica. Não
 Original privado usa nome gerado pelo servidor. checksum/aba/linha/módulo permitem deduplicação de origem.
 DRY RUN: savepoints/rollback comercial; confirmação: digest + revalidação sob transação; erro de conteúdo por linha e rollback global em falha técnica inesperada.
 
+## 6A. Orçamentos — EXISTENTE (Etapa 5, migration 0005_quotes)
+| Entidade | Campos | Garantias |
+| --- | --- | --- |
+| Quote / quotes | id, year, sequence, customer_id, customer_snapshot JSON, status, status_reason, start_date, valid_until, notes, total_cents, duplicated_from_id opcional + Editable | (year, sequence) único; CHECK status; total ≥ 0; FKs cliente/origem/autor |
+| QuoteItem / quote_items | id, quote_id, position, product_id, product_code/product_name/unit (snapshot), quantity_milli, period, period_count, price_id opcional, table_price_cents, unit_price_cents, total_cents, end_date | quantidade e períodos > 0; período válido; valores ≥ 0; FKs |
+| QuoteTransition / quote_transitions | id, quote_id, from_status opcional, to_status, reason, created_at, created_by | histórico append-only das mudanças de estado |
+
+Número exibido `ORC-{year}-{sequence:06d}` é derivado, não coluna. Status persistidos: RASCUNHO, ENVIADO, APROVADO, REJEITADO, CANCELADO, CONVERTIDO; EXPIRADO é derivado na leitura e nos filtros. `price_id` aponta a revisão de preço usada; `table_price_cents` é o snapshot e nunca é relido sem pedido explícito.
+Cálculo em `backend/app/quotes/calc.py` (puro, Decimal → inteiros); regras em `service.py`; PDF em `pdf.py`.
+
 ## 7. Relacionamentos existentes
+- Customer 1:N Quote; Quote 1:N QuoteItem e QuoteTransition; Quote → Quote de origem por duplicated_from_id; QuoteItem → Product e Price.
 - users → autoria comercial, auditoria e sessões.
 - Customer 1:N CustomerAddress.
 - Product 1:N Equipment, StockMovement e Price.
@@ -85,6 +96,9 @@ Prefixos: /api para comercial; /api/imports para importação.
 | Importação | GET /fields e raiz; POST /upload; GET /{id} | imports.read/write conforme ação |
 | Conversão | POST /{id}/preview, /confirm, /new-conversion | imports.write e escrita de destino conforme serviço |
 | Arquivos | GET /{id}/original e /report | imports.read |
+| Orçamentos | GET /api/quotes (q, status, customer_id, offset, limit); GET /api/quotes/{id}; GET /api/quotes/pricing; GET /api/quotes/{id}/pdf | quotes.read |
+| Orçamentos — escrita | POST /api/quotes; PUT /api/quotes/{id} (version, refresh_prices); POST /{id}/duplicate; POST /{id}/send, /reject, /cancel, /reopen | quotes.write; preço diferente da tabela exige quotes.negotiate |
+| Orçamentos — aprovação | POST /api/quotes/{id}/approve | quotes.approve |
 
 DELETE comercial segue serviço e preservação de histórico, sem presumir remoção física.
 Schemas exatos, filtros, paginação e payloads: backend/app/masters/schemas.py e imports/schemas.py. Identidade: catálogo em SECURITY.
@@ -111,8 +125,8 @@ Rotas futuras devem ser propostas e revisadas; este documento não promete endpo
 ## 11. Concorrência e migrations
 Version nas edições; request_key no movimento; source_key na origem; BEGIN IMMEDIATE nas operações SQLite pertinentes.
 Novos números e operações comerciais precisam de constraints + serviço + testes concorrentes.
-Cadeia existente: 0001_foundation → 0002_identity → 0003_masters → 0004_imports.
-Aplicação local de 0004 foi registrada em 08/10; não revalidada nesta sessão.
+Cadeia existente: 0001_foundation → 0002_identity → 0003_masters → 0004_imports → 0005_quotes.
+0005_quotes aplicada ao banco local em 11/10 após backup; ver DATABASE.
 Comandos existentes: scripts/migrate.ps1; -Action current; -Action check. Aplicar migration exige plano/backup.
 Downgrade/upgrade de teste somente em temporários. PostgreSQL ainda requer validação específica.
 

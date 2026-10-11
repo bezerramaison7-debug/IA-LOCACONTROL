@@ -31,6 +31,19 @@ Cliente → produtos/quantidades → período → preços → desconto → total
 
 Estados previstos: rascunho, enviado, aprovado, rejeitado, expirado e convertido. O fluxo de cancelamento deve ser conciliado formalmente com os estados na Etapa 5, pois o plano solicita a ação mas não lista seu estado. Testar cálculos com Decimal; não atualizar orçamento histórico pela tabela corrente.
 
+### Regras de orçamento confirmadas em 2026-10-11
+
+- Valor do item: quantidade × preço do período × número de períodos. Não há fração de período; o vendedor escolhe o período e quantos períodos.
+- Duração: diária 1 dia, semanal 7, quinzenal 15, mensal 30 dias corridos. Devolução prevista = início + dias × número de períodos.
+- Desconto: somente preço negociado por item, por usuário com permissão. O orçamento guarda preço de tabela e negociado e mostra a diferença; não há desconto separado no total.
+- Arredondamento: cada item em centavos, meio centavo para cima; total é a soma dos itens.
+- Estados persistidos: rascunho, enviado, aprovado, rejeitado, cancelado e convertido. Expirado é o enviado com validade vencida (classificação por data).
+- Transições: enviar (rascunho → enviado); aprovar (rascunho ou enviado → aprovado); rejeitar (enviado → rejeitado, com motivo); cancelar (rascunho, enviado ou aprovado → cancelado, com motivo); reabrir (enviado, inclusive expirado → rascunho). Convertido chega com a Etapa 6 e não pode ser cancelado.
+- Rejeitado é recusa do cliente; cancelado é decisão da locadora. Só rascunho é editável; orçamento expirado pode ser reaberto, cancelado ou duplicado.
+- Produto controlado por unidade exige quantidade inteira. O mesmo produto não se repete no mesmo período dentro de um orçamento.
+- Rascunho já salvo mantém o preço de tabela registrado; reler a tabela é ação explícita. Duplicar usa a tabela atual e informa itens que não puderam ser copiados.
+- Orçamento mostra o saldo disponível, mas não reserva estoque.
+
 ## Contratos e documentos — Etapa 6
 
 Contrato direto ou a partir de orçamento aprovado. ID interno separado de `base_number` e `renewal_number`. Exibição `9193`, `9193.1`, `9193.2`; renovação sempre vinculada ao original. Numeração deve impedir colisões e preservar código importado.

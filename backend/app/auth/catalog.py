@@ -23,6 +23,11 @@ PERMISSIONS = {
     "quotes.write": "Criar, editar, enviar, cancelar e duplicar orçamentos",
     "quotes.approve": "Aprovar orçamentos",
     "quotes.negotiate": "Alterar o preço de tabela em orçamentos",
+    "contracts.read": "Consultar contratos, histórico e documentos",
+    "contracts.write": "Criar, confirmar, cancelar, renovar contratos e gerar documentos",
+    "contracts.negotiate": "Alterar o preço de tabela em contratos e renovações",
+    "contracts.configure": "Configurar numeração e modelos de contrato",
+    "operations.write": "Registrar retiradas e devoluções",
 }
 ROLES = {
     "ADMINISTRADOR": "Administrador",

@@ -34,9 +34,15 @@ DRY RUN usa savepoints e rollback de registros, auditoria e origens. O upload an
 
 Estado local em 08/10/2026: **0004_imports aplicada**, 5 perfis, 18 permissões, 1 usuário, tabelas comerciais/importação vazias. Conta e hash comparados com backup e preservados. integrity_check ok, foreign_key_check sem ocorrências e Alembic check sem drift. Backup: data/backups/pre-imports-20261008-214138.db, feito consistentemente antes de aplicar 0003 e 0004. Testes de upgrade/downgrade/reupgrade somente em temporário.
 
+## Orçamentos — Etapa 5
+
+Migration 0005_quotes cria quotes, quote_items e quote_transitions e quatro permissões (quotes.read/write/approve/negotiate; administrador recebe todas, comercial read/write/approve, financeiro read). Valores em centavos e quantidades em milésimos; datas comerciais como texto AAAA-MM-DD. (year, sequence) único sustenta o número ORC-AAAA-NNNNNN. Itens guardam snapshot de produto e de preço de tabela, além do preço negociado. Status EXPIRADO não é coluna: deriva da validade.
+
+Estado local em 11/10/2026: **0005_quotes aplicada**, 5 perfis, 22 permissões, 1 usuário, tabelas comerciais vazias. Conta e hash comparados com o backup e preservados; integrity_check ok, foreign_key_check sem ocorrências, Alembic check sem drift. Backup: data/backups/pre-quotes-20261011-084445.db.
+
 ## Próximas migrations previstas
 
-- Etapas 5–7: orçamentos/itens/snapshots, contratos/itens/documentos, relações de renovação, retirada e devolução.
+- Etapas 6–7: contratos/itens/documentos, relações de renovação, retirada e devolução.
 - Etapas 9–10: solicitações do portal e documentos fiscais/retornos de adapters.
 
 Este mapa é conceitual: não cria migrations antecipadas nem fixa schema sem analisar a etapa.

@@ -17,7 +17,7 @@ def test_migration_upgrade_idempotency_downgrade_and_reupgrade(migration_config)
     engine = build_engine(url)
     try:
         with engine.connect() as connection:
-            assert MigrationContext.configure(connection).get_current_heads() == ("0005_quotes",)
+            assert MigrationContext.configure(connection).get_current_heads() == ("0006_contracts",)
             assert set(inspect(connection).get_table_names()) == {
                 "alembic_version",
                 "users",
@@ -39,6 +39,17 @@ def test_migration_upgrade_idempotency_downgrade_and_reupgrade(migration_config)
                 "quotes",
                 "quote_items",
                 "quote_transitions",
+                "contracts",
+                "contract_items",
+                "contract_events",
+                "contract_templates",
+                "contract_documents",
+                "contract_item_units",
+                "app_settings",
+                "withdrawals",
+                "withdrawal_items",
+                "returns",
+                "return_items",
             }
             assert connection.scalar(text("SELECT COUNT(*) FROM roles")) == 5
             assert connection.scalar(text("SELECT COUNT(*) FROM users")) == 0
@@ -48,7 +59,7 @@ def test_migration_upgrade_idempotency_downgrade_and_reupgrade(migration_config)
             assert MigrationContext.configure(connection).get_current_heads() == ()
         command.upgrade(migration_config, "head")
         with engine.connect() as connection:
-            assert MigrationContext.configure(connection).get_current_heads() == ("0005_quotes",)
+            assert MigrationContext.configure(connection).get_current_heads() == ("0006_contracts",)
     finally:
         engine.dispose()
 

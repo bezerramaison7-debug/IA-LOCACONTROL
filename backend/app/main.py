@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import __version__
 from app.api.health import router as health_router
 from app.auth.routes import router as identity_router
+from app.contracts.routes import router as contracts_router
 from app.core.config import PROJECT_ROOT, Settings
 from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
@@ -71,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(masters_router)
     app.include_router(imports_router)
     app.include_router(quotes_router)
+    app.include_router(contracts_router)
     dist = PROJECT_ROOT / "frontend" / "dist"
     if dist.is_dir():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")

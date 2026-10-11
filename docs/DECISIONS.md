@@ -1,5 +1,13 @@
 # LocaControl — Decisões técnicas
 
+## ADR-014 — Orçamentos: cálculo, estados e documento (2026-10-11)
+
+ACEITA. Regras comerciais respondidas pelo usuário em 11/10: valor do item = quantidade × preço do período × número de períodos, sem fração de período; duração em dias corridos (diária 1, semanal 7, quinzenal 15, mensal 30) e devolução prevista = início + dias × períodos; desconto somente como preço negociado por item, com preço de tabela e negociado guardados; cancelamento é estado próprio (CANCELADO, decisão da locadora com motivo), distinto de REJEITADO (recusa do cliente).
+
+Decisões técnicas do implementador, revisáveis: arredondamento do item em meio centavo para cima (ROUND_HALF_UP) e total = soma dos itens; EXPIRADO não é persistido, é ENVIADO com validade anterior à data comercial (UTC−3 fixo em `app/core/clock.py`); numeração `ORC-AAAA-NNNNNN` por ano com unicidade (year, sequence) e alocação sob BEGIN IMMEDIATE; rascunho salvo mantém o preço de tabela do snapshot até pedido explícito `refresh_prices` ou mudança da data de início; duplicação gera rascunho com a tabela atual e informa itens não copiados; aprovação aceita rascunho ou enviado. Permissões: quotes.read/write/approve/negotiate; negociar preço nasce apenas com o administrador.
+
+PDF gerado no backend com reportlab a partir dos snapshots (nunca da tabela corrente). Dados da locadora no cabeçalho vêm de `LOCACONTROL_COMPANY_*`; sem configuração, o cabeçalho mostra "LocaControl". Conversão em contrato fica para a Etapa 6.
+
 ## ADR-013 — Excel enviado pelo usuário (2026-10-08)
 
 ACEITA. O usuário envia o arquivo pelo sistema, sem caminho local. Análise dinâmica, mapeamento explícito por aba/módulo, prévia sem persistência comercial, revalidação por digest e confirmação. Sem presumir cabeçalhos/layout antes do upload real. Original imutável, checksum, ImportBatch e origem por linha. openpyxl lê .xlsx/.xlsm sem executar macros/fórmulas/referências; defusedxml protege leitura XML e python-multipart atende upload. Limites e fluxo em EXCEL_IMPORT.md.
