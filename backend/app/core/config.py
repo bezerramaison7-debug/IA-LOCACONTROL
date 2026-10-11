@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     fiscal_directory: Path = PROJECT_ROOT / "data" / "fiscal"
     # Free text agreed with the accountant; the system does not infer the tax document type.
     fiscal_document_kind: str = ""
+    # Default folder for backup sets; the administrator may choose another in the interface.
+    backup_directory: Path = PROJECT_ROOT / "data" / "backups"
+    # Background check for the daily automatic backup; tests turn it off.
+    backup_scheduler: bool = True
     # Printed on commercial documents; set the real company data in .env.
     company_name: str = "LocaControl"
     company_document: str = ""

@@ -16,6 +16,8 @@ from app.core.config import PROJECT_ROOT, Settings
 from app.fiscal.routes import router as fiscal_router
 from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
+from app.ops.backup import BackupManager, BackupScheduler
+from app.ops.routes import router as backups_router
 from app.persistence.database import build_engine
 from app.portal.routes import router as portal_router
 from app.quotes.routes import router as quotes_router
@@ -31,7 +33,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             scripts = ScriptDirectory(str(PROJECT_ROOT / "backend" / "migrations"))
             app.state.expected_heads = set(scripts.get_heads())
-            yield
+            scheduler = None
+            if settings.backup_scheduler:
+                scheduler = BackupScheduler(BackupManager(settings, app.state.engine))
+                scheduler.start()
+            try:
+                yield
+            finally:
+                if scheduler:
+                    scheduler.stop()
         finally:
             app.state.engine.dispose()
 
@@ -79,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reports_router)
     app.include_router(portal_router)
     app.include_router(fiscal_router)
+    app.include_router(backups_router)
     dist = PROJECT_ROOT / "frontend" / "dist"
     if dist.is_dir():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")

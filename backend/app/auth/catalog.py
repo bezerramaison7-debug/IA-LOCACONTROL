@@ -31,6 +31,7 @@ PERMISSIONS = {
     "reports.read": "Consultar e exportar relatórios",
     "fiscal.read": "Consultar documentos fiscais e retornos do provedor",
     "fiscal.write": "Criar, enviar e cancelar documentos fiscais",
+    "backups.manage": "Configurar, executar, baixar e restaurar backups",
     "portal.access": "Acessar o portal do cliente com os próprios dados",
 }
 ROLES = {

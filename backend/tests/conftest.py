@@ -44,6 +44,9 @@ def client(migrated_config, tmp_path):
         # Generated documents must never land in the real data directory.
         document_directory=tmp_path / "documents",
         fiscal_directory=tmp_path / "fiscal",
+        import_directory=tmp_path / "imports",
+        backup_directory=tmp_path / "backups",
+        backup_scheduler=False,
     )
     with TestClient(create_app(settings)) as client:
         yield client
