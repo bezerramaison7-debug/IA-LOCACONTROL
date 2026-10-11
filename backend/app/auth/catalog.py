@@ -19,6 +19,10 @@ PERMISSIONS = {
     "stock.write": "Movimentar estoque e situação de equipamentos",
     "prices.read": "Consultar preços e histórico",
     "prices.write": "Publicar, revisar e desativar preços",
+    "quotes.read": "Consultar orçamentos e baixar PDF",
+    "quotes.write": "Criar, editar, enviar, cancelar e duplicar orçamentos",
+    "quotes.approve": "Aprovar orçamentos",
+    "quotes.negotiate": "Alterar o preço de tabela em orçamentos",
 }
 ROLES = {
     "ADMINISTRADOR": "Administrador",

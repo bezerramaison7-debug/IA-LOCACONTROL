@@ -6,6 +6,7 @@ from app.imports import models as import_models  # noqa: F401
 from app.masters import models as master_models  # noqa: F401
 from app.persistence.base import Base
 from app.persistence.database import build_engine, resolve_database_url
+from app.quotes import models as quote_models  # noqa: F401
 
 config = context.config
 target_metadata = Base.metadata

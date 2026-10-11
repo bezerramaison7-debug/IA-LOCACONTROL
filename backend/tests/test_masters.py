@@ -347,7 +347,7 @@ def test_upgrade_0002_preserves_existing_account(migration_config):
         with Session(engine) as db:
             user = db.get(User, user_id)
             assert user.password_hash == original_hash and user.username == "existing"
-            assert len(user.roles[0].permissions) == 18
+            assert len(user.roles[0].permissions) == 22
             assert db.scalar(select(func.count()).select_from(Customer)) == 0
         command.downgrade(migration_config, "0002_identity")
         with Session(engine) as db:

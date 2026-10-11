@@ -26,3 +26,8 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # Enable behind HTTPS; local loopback uses HTTP.
     import_directory: Path = PROJECT_ROOT / "data" / "imports"
     session_hours: int = Field(default=8, ge=1, le=24)
+    # Printed on commercial documents; set the real company data in .env.
+    company_name: str = "LocaControl"
+    company_document: str = ""
+    company_address: str = ""
+    company_contact: str = ""
