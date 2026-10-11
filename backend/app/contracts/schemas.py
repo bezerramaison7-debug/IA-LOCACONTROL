@@ -12,6 +12,7 @@ Status = Literal[
     "RASCUNHO", "AGUARDANDO_RETIRADA", "ATIVO", "VENCENDO", "VENCIDO", "ENCERRADO", "CANCELADO"
 ]
 PriceOption = Literal["ANTERIORES", "ATUAIS", "NEGOCIADOS"]
+Origin = Literal["DIRETO", "ORCAMENTO", "RENOVACAO", "IMPORTADO"]
 Reason = Field(default="", max_length=500)
 
 

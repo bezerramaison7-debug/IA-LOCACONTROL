@@ -192,6 +192,7 @@ def test_customer_summary_and_advanced_contract_search(client, admin, scene):
     assert found(product="andaime") == [] and found(product="AND-1") == ["1", "1.1", "2"]
     assert found(equipment="GER-A") == ["1"] and found(equipment="GER-B") == []
     assert found(period="DIARIA") == ["1"]
+    assert found(origin="RENOVACAO") == ["1.1"] and found(origin="DIRETO") == ["1", "2"]
     assert found(q=person["document"], status="RASCUNHO") == ["2"]
     assert found(start_from=(TODAY + timedelta(days=1)).isoformat()) == []
     assert found(start_to=START, status="ATIVO") == ["1", "1.1"]

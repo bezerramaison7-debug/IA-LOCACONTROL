@@ -580,6 +580,7 @@ def page(
     q="",
     status=None,
     customer_id=None,
+    origin=None,
     product="",
     equipment="",
     period=None,
@@ -625,6 +626,8 @@ def page(
         stmt = stmt.where(Contract.status == status)
     if customer_id is not None:
         stmt = stmt.where(Contract.customer_id == customer_id)
+    if origin:
+        stmt = stmt.where(Contract.origin == origin)
     if product or period:
         lines = select(ContractItem.contract_id)
         if product:
