@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from alembic.script import ScriptDirectory
@@ -24,8 +25,20 @@ from app.quotes.routes import router as quotes_router
 from app.reports.routes import router as reports_router
 
 
+def configure_logging():
+    """Uvicorn only configures its own loggers; application messages need a handler too."""
+    logger = logging.getLogger("app")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
+    configure_logging()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
