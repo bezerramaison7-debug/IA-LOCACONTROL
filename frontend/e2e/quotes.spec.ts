@@ -130,8 +130,8 @@ test('real quote: table price, negotiation, send, approve and PDF', async ({ pag
   dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: 'Confirmar aprovação' }).click()
   await expect(summary).toContainText('Aprovado')
-  await expect(summary).toContainText('A conversão em contrato chega com o módulo de contratos')
-  await expect(page.getByRole('button', { name: /Converter/ })).toHaveCount(0)
+  await expect(summary).toContainText('Converta-o em contrato para seguir com a locação.')
+  await expect(summary.getByRole('button', { name: 'Converter em contrato' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Histórico', exact: true })).toContainText(
     'Enviado → Aprovado',
   )
@@ -193,4 +193,23 @@ test('real quote: table price, negotiation, send, approve and PDF', async ({ pag
   await expect(page.getByText('Nenhum orçamento encontrado')).toBeVisible()
   await page.getByRole('button', { name: 'Limpar filtros' }).click()
   await expect(page.getByRole('table')).toBeVisible()
+
+  // The approved quote becomes a draft contract exactly once and both sides link to each other.
+  await page.goto(detailUrl)
+  await summary.getByRole('button', { name: 'Converter em contrato' }).click()
+  await expect(page.getByRole('dialog')).toContainText('a conversão só pode ser feita uma vez')
+  await page.getByRole('dialog').getByRole('button', { name: 'Confirmar conversão' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: /^Contrato \d+$/ })).toBeVisible()
+  await expect(summary).toContainText('Rascunho')
+  await expect(summary).toContainText('Orçamento aprovado')
+  await expect(page.getByRole('region', { name: 'Valores', exact: true })).toContainText(
+    'Total do contratoR$ 1.800,00',
+  )
+  await summary.getByRole('link', { name: /^ORC-\d{4}-\d{6}$/ }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: /Orçamento ORC-\d{4}-\d{6}/ }),
+  ).toBeVisible()
+  await expect(summary).toContainText('Convertido')
+  await expect(summary.getByRole('button', { name: 'Converter em contrato' })).toHaveCount(0)
+  await expect(summary.getByRole('link', { name: /^Abrir contrato \d+$/ })).toBeVisible()
 })

@@ -14,10 +14,13 @@ import { ConfirmDialog } from '../components/Modal'
 import { DemoForm } from '../components/DemoForm'
 import { useToast } from '../components/toast-context'
 import { HealthPanel } from '../components/HealthPanel'
+import { useAuth } from '../auth/context'
+import { ContractSettings } from './contracts-settings'
 
 export function Settings() {
   const { preference, setPreference, resolved } = useTheme()
   const notify = useToast()
+  const { user } = useAuth()
   return (
     <>
       <PageHeader
@@ -170,6 +173,7 @@ export function Settings() {
           </div>
         </div>
       </details>
+      {user?.permissions.includes('contracts.configure') && <ContractSettings />}
       <HealthPanel />
     </>
   )

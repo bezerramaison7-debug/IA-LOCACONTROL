@@ -1982,3 +1982,96 @@ dd {
     justify-content: stretch;
   }
 }
+
+/* Contracts and operations: unit lists, choices, review and timeline on the shared tokens. */
+.contract-units,
+.contract-review,
+.contract-timeline,
+.contract-placeholders ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.contract-units {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.contract-review {
+  display: grid;
+  gap: 8px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.contract-choices {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.contract-choices legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.contract-timeline {
+  display: grid;
+  padding: 8px 22px 20px;
+}
+.contract-timeline li {
+  display: grid;
+  gap: 4px;
+  padding: 14px 0 14px 18px;
+  border-left: 2px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.contract-timeline li:last-child {
+  border-bottom: 0;
+}
+.contract-timeline-when {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.contract-template {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.contract-placeholders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.contract-placeholders h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.contract-placeholders ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.contract-placeholders code {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .contract-placeholders {
+    grid-template-columns: 1fr;
+  }
+  .contract-timeline {
+    padding: 4px 16px 16px;
+  }
+}

@@ -25,6 +25,11 @@ export function pathPermission(path: string) {
     '/estoque': 'stock.read',
     '/precos': 'prices.read',
     '/orcamentos': 'quotes.read',
+    '/contratos': 'contracts.read',
+    '/renovacoes': 'contracts.read',
+    '/retiradas': 'contracts.read',
+    '/devolucoes': 'contracts.read',
+    '/manutencao': 'stock.read',
     '/importacoes': 'imports.read',
   }
   if (masters[path]) return masters[path]

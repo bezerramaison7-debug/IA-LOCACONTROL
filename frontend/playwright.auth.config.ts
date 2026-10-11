@@ -4,7 +4,7 @@ if (!process.env.E2E_AUTH_BASE_URL)
   throw new Error('Execute pela raiz: .venv/Scripts/python.exe scripts/e2e-auth.py')
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /(?:auth|masters|imports|quotes)\.spec\.ts/,
+  testMatch: /(?:auth|masters|imports|quotes|contracts)\.spec\.ts/,
   timeout: 120_000,
   workers: 1,
   maxFailures: 1,

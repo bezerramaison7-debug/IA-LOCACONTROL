@@ -4,10 +4,17 @@ import { adminSession } from '../src/test/auth-fixture'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (route) => route.fulfill({ json: adminSession }))
-  for (const module of ['customers', 'products', 'equipment', 'quotes'])
+  for (const module of ['customers', 'products', 'equipment', 'quotes', 'contracts'])
     await page.route('**/api/' + module + '**', (route) =>
       route.fulfill({ json: { items: [], total: 0 } }),
     )
+  // Later routes win: the contract settings shown in Configurações have their own shapes.
+  await page.route('**/api/contracts/numbering', (route) =>
+    route.fulfill({ json: { configured: null, highest_used: null, next_number: 1 } }),
+  )
+  await page.route('**/api/contracts/templates', (route) =>
+    route.fulfill({ json: { items: [], fields: ['contract.number'], blocks: ['items'] } }),
+  )
   // Somente o diagnóstico é simulado neste teste de UI. Smoke testa HTTP/banco reais.
   await page.route('**/health', (route) =>
     route.fulfill({ json: { status: 'ok', database: 'ok', schema: 'ok', version: '0.1.0' } }),
@@ -33,7 +40,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto(`/#${path}`)
       await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      if (!['/clientes', '/produtos', '/equipamentos', '/orcamentos'].includes(path))
+      if (!['/clientes', '/produtos', '/equipamentos', '/orcamentos', '/contratos'].includes(path))
         await expect(page.getByText('Modo demonstração')).toBeVisible()
       else await expect(page.getByText('Modo demonstração')).toHaveCount(0)
       const overflow = await page.evaluate(
@@ -102,12 +109,10 @@ test('keyboard, dialogs, search, table filters and page navigation', async ({ pa
   await page.getByRole('dialog').getByRole('link', { name: 'Contratos' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Contratos' })).toBeVisible()
   await page.getByRole('textbox', { name: 'Buscar em contratos' }).fill('Ninguém')
-  await expect(page.getByText('Nenhum resultado encontrado')).toBeVisible()
+  await expect(page.getByText('Nenhum contrato encontrado')).toBeVisible()
   await page.getByRole('button', { name: 'Limpar filtros' }).first().click()
-  await page.getByRole('combobox', { name: 'Estado da prévia' }).selectOption('error')
-  await expect(page.getByRole('alert')).toContainText('erro simulado')
-  await page.getByRole('button', { name: 'Tentar novamente' }).click()
-  await expect(page.getByRole('table')).toBeVisible()
+  await expect(page.getByText('Nenhum contrato ainda')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Buscar em contratos' })).toHaveValue('')
   if (page.viewportSize()!.width < 1024) {
     await page.getByRole('button', { name: 'Abrir menu' }).click()
     await page.getByRole('dialog').getByRole('link', { name: 'Produtos', exact: true }).click()

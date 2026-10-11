@@ -285,11 +285,14 @@ export async function transitionQuote(
 export async function duplicateQuote(request: Request, id: number) {
   return duplicatedQuoteSchema.parse(await request('/quotes/' + id + '/duplicate', 'POST', {}))
 }
+export function downloadQuotePdf(quote: Pick<Quote, 'id' | 'number'>) {
+  return downloadPdf('/quotes/' + quote.id + '/pdf', quote.number + '.pdf')
+}
 /** Authenticated same-origin download; the PDF never goes through the JSON client. */
-export async function downloadQuotePdf(quote: Pick<Quote, 'id' | 'number'>) {
+export async function downloadPdf(path: string, filename: string) {
   let response: Response
   try {
-    response = await fetch('/api/quotes/' + quote.id + '/pdf', {
+    response = await fetch('/api' + path, {
       credentials: 'same-origin',
       headers: { 'X-LocaControl-Request': '1' },
     })
@@ -306,7 +309,7 @@ export async function downloadQuotePdf(quote: Pick<Quote, 'id' | 'number'>) {
   const url = URL.createObjectURL(await response.blob())
   const link = document.createElement('a')
   link.href = url
-  link.download = quote.number + '.pdf'
+  link.download = filename
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

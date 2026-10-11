@@ -17,7 +17,11 @@ const Quotes = lazy(() => import('./pages/Quotes').then((m) => ({ default: m.Quo
 const Prices = lazy(() => import('./pages/Prices').then((m) => ({ default: m.Prices })))
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })))
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
-const Catalog = lazy(() => import('./pages/Catalog').then((m) => ({ default: m.Catalog })))
+const Contracts = lazy(() => import('./pages/Contracts').then((m) => ({ default: m.Contracts })))
+const Operations = lazy(() => import('./pages/Operations').then((m) => ({ default: m.Operations })))
+const Maintenance = lazy(() =>
+  import('./pages/Maintenance').then((m) => ({ default: m.Maintenance })),
+)
 const Users = lazy(() => import('./pages/Users').then((m) => ({ default: m.Users })))
 const Roles = lazy(() => import('./pages/Roles').then((m) => ({ default: m.Roles })))
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })))
@@ -52,7 +56,20 @@ export default function App() {
                     <Route path="precos" element={<Prices />} />
                     <Route path="importacoes" element={<Imports />} />
                     <Route path="orcamentos" element={<Quotes />} />
-                    <Route path="contratos" element={<Catalog kind="contratos" />} />
+                    <Route path="contratos" element={<Contracts />} />
+                    <Route
+                      path="renovacoes"
+                      element={<Operations key="renovacoes" view="renovacoes" />}
+                    />
+                    <Route
+                      path="retiradas"
+                      element={<Operations key="retiradas" view="retiradas" />}
+                    />
+                    <Route
+                      path="devolucoes"
+                      element={<Operations key="devolucoes" view="devolucoes" />}
+                    />
+                    <Route path="manutencao" element={<Maintenance />} />
                     <Route
                       path="configuracoes"
                       element={

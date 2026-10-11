@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Ban,
   CircleCheck,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../auth/context'
 import { periods } from '../lib/masters'
+import { contractFromQuote, findContractOfQuote } from '../lib/contracts'
 import {
   brDate,
   brDateTime,
@@ -36,6 +38,7 @@ import { Modal } from '../components/Modal'
 import { Card, ErrorState, Field, PageHeader, Skeleton } from '../components/ui'
 import { useToast } from '../components/toast-context'
 import { Failure, MasterTable } from './masters-shared'
+import { ActionFailure } from './contracts-shared'
 
 const badges = {
   RASCUNHO: ['muted', PencilLine],
@@ -185,13 +188,25 @@ export function QuoteDetail({
   const { request, user } = useAuth()
   const cache = useQueryClient()
   const toast = useToast()
+  const navigate = useNavigate()
   const [action, setAction] = useState<QuoteAction | null>(null)
+  const [converting, setConverting] = useState(false)
+  const [conversion, setConversion] = useState<{ message: string; conflict: boolean } | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const can = (code: string) => !!user?.permissions.includes('quotes.' + code)
+  const canContract = (code: string) => !!user?.permissions.includes('contracts.' + code)
   const query = useQuery({
     queryKey: ['quotes', 'detail', id],
     queryFn: () => getQuote(request, id),
+    retry: false,
+  })
+  const converted = query.data?.status === 'CONVERTIDO' ? query.data : null
+  // The quote does not carry the contract id: the link is looked up among the customer's contracts.
+  const contract = useQuery({
+    queryKey: ['contracts', 'of-quote', id],
+    queryFn: () => findContractOfQuote(request, converted!),
+    enabled: !!converted && canContract('read'),
     retry: false,
   })
   const back = (
@@ -296,8 +311,25 @@ export function QuoteDetail({
           )}
           {quote.status === 'APROVADO' && (
             <p className="quote-notice">
-              A conversão em contrato chega com o módulo de contratos. Até lá, o orçamento aprovado
-              fica registrado e não reserva estoque.
+              Orçamento aprovado não reserva estoque.{' '}
+              {canContract('write')
+                ? 'Converta-o em contrato para seguir com a locação.'
+                : 'A conversão em contrato exige a permissão de criar contratos.'}
+            </p>
+          )}
+          {quote.status === 'CONVERTIDO' && (
+            <p className="quote-notice">
+              <span>
+                Este orçamento já foi convertido em contrato e não pode ser convertido de novo.
+                {contract.data && (
+                  <>
+                    {' '}
+                    <Link to={'/contratos?id=' + contract.data.id}>
+                      Abrir contrato {contract.data.number}
+                    </Link>
+                  </>
+                )}
+              </span>
             </p>
           )}
           <Failure message={error} />
@@ -306,6 +338,18 @@ export function QuoteDetail({
               <Button onClick={onEdit}>
                 <PencilLine size={16} aria-hidden="true" />
                 Editar
+              </Button>
+            )}
+            {quote.status === 'APROVADO' && canContract('write') && (
+              <Button
+                disabled={!!busy}
+                onClick={() => {
+                  setConversion(null)
+                  setConverting(true)
+                }}
+              >
+                <FileText size={16} aria-hidden="true" />
+                Converter em contrato
               </Button>
             )}
             {actions.map((item) => (
@@ -486,6 +530,62 @@ export function QuoteDetail({
             }}
           />
         )}
+      </Modal>
+      <Modal
+        open={converting}
+        onOpenChange={(open) => {
+          if (!open && busy !== 'convert') setConverting(false)
+        }}
+        title="Converter em contrato"
+        description={quote.number + ' · ' + customer.legal_name}
+      >
+        <div className="form-stack">
+          <p>
+            Será criado um contrato em rascunho com o cliente, os itens e os preços deste orçamento,
+            usando o próximo número de contrato. O orçamento passa a Convertido e a conversão só
+            pode ser feita uma vez.
+          </p>
+          <ActionFailure
+            failure={conversion}
+            onReload={() => {
+              setConverting(false)
+              reload()
+            }}
+            reloadLabel="Recarregar orçamento"
+          />
+          <div className="modal-actions">
+            <Button
+              variant="secondary"
+              disabled={busy === 'convert'}
+              onClick={() => setConverting(false)}
+            >
+              Voltar
+            </Button>
+            <Button
+              disabled={busy === 'convert'}
+              onClick={async () => {
+                setBusy('convert')
+                setConversion(null)
+                try {
+                  const created = await contractFromQuote(request, quote)
+                  await cache.invalidateQueries({ queryKey: ['quotes'] })
+                  void cache.invalidateQueries({ queryKey: ['contracts'] })
+                  toast('Contrato ' + created.number + ' criado como rascunho.')
+                  navigate('/contratos?id=' + created.id)
+                } catch (e) {
+                  setConversion({
+                    message: failureMessage(e, 'Não foi possível converter o orçamento.'),
+                    conflict: isConflict(e),
+                  })
+                } finally {
+                  setBusy('')
+                }
+              }}
+            >
+              {busy === 'convert' ? 'Convertendo…' : 'Confirmar conversão'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </>
   )

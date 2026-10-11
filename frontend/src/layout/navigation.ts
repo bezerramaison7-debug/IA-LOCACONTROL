@@ -30,7 +30,7 @@ export const navigation = [
       { path: '/clientes', label: 'Clientes', icon: Users, ready: true },
       { path: '/orcamentos', label: 'Orçamentos', icon: ClipboardList, ready: true },
       { path: '/contratos', label: 'Contratos', icon: FileText, ready: true },
-      { path: '/renovacoes', label: 'Renovações', icon: RefreshCw, ready: false },
+      { path: '/renovacoes', label: 'Renovações', icon: RefreshCw, ready: true },
     ],
   },
   {
@@ -40,9 +40,9 @@ export const navigation = [
       { path: '/equipamentos', label: 'Equipamentos', icon: Drill, ready: true },
       { path: '/estoque', label: 'Estoque', icon: Warehouse, ready: true },
       { path: '/precos', label: 'Preços', icon: Receipt, ready: true },
-      { path: '/retiradas', label: 'Retiradas', icon: Truck, ready: false },
-      { path: '/devolucoes', label: 'Devoluções', icon: Undo2, ready: false },
-      { path: '/manutencao', label: 'Manutenção', icon: Wrench, ready: false },
+      { path: '/retiradas', label: 'Retiradas', icon: Truck, ready: true },
+      { path: '/devolucoes', label: 'Devoluções', icon: Undo2, ready: true },
+      { path: '/manutencao', label: 'Manutenção', icon: Wrench, ready: true },
     ],
   },
   {

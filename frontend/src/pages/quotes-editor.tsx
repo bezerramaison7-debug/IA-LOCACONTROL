@@ -36,7 +36,7 @@ const emptyItem: QuoteFormItem = {
 }
 
 /** Search box plus a labelled select; the chosen option stays listed while the search changes. */
-function RecordPicker({
+export function RecordPicker({
   kind,
   searchLabel,
   label,
@@ -125,7 +125,7 @@ function RecordPicker({
   )
 }
 
-type Line = {
+export type Line = {
   /** Saved lines keep their snapshot price until the user asks to refresh the table. */
   kept: boolean
   tablePrice: string | null
@@ -136,7 +136,7 @@ type Line = {
   estimate: bigint | null
 }
 
-function ItemFields({
+export function ItemFields({
   index,
   form,
   item,
@@ -148,6 +148,9 @@ function ItemFields({
   onProduct,
   onRemove,
   onRetry,
+  noun = 'orçamento',
+  stockNote = 'Apenas informativo: orçamento não reserva estoque.',
+  priceOnSave = false,
 }: {
   index: number
   form: UseFormReturn<QuoteForm>
@@ -160,6 +163,11 @@ function ItemFields({
   onProduct: (id: string, label: string) => void
   onRemove: () => void
   onRetry: () => void
+  /** Document being edited, used in the messages ("orçamento" or "contrato"). */
+  noun?: string
+  stockNote?: string
+  /** The profile cannot consult the price table here; the server prices the line on save. */
+  priceOnSave?: boolean
 }) {
   const number = index + 1
   const errors = form.formState.errors.items?.[index]
@@ -225,6 +233,11 @@ function ItemFields({
           <p className="field-hint">
             Selecione um produto para consultar o preço de tabela e a disponibilidade.
           </p>
+        ) : priceOnSave ? (
+          <p className="field-hint">
+            Seu perfil não consulta a tabela de preços nesta tela. O preço de tabela será calculado
+            ao salvar.
+          </p>
         ) : line.failed ? (
           <ErrorState message={line.failed} onRetry={onRetry} />
         ) : line.pending ? (
@@ -237,13 +250,13 @@ function ItemFields({
               <p className="quote-notice quote-notice-danger" role="alert">
                 <strong>Preço ausente.</strong> Não há preço {periods[item.period]} vigente para
                 este produto em {brDate(startDate)}. Cadastre o preço, mude o período ou remova o
-                item para salvar o orçamento.
+                item para salvar o {noun}.
               </p>
             ) : (
               line.tablePrice && (
                 <p>
                   <strong>Preço de tabela: {brMoney(line.tablePrice)}</strong> por período (
-                  {periods[item.period]}){line.kept && ' · preço salvo neste orçamento'}
+                  {periods[item.period]}){line.kept && ' · preço salvo neste ' + noun}
                 </p>
               )
             )}
@@ -255,8 +268,8 @@ function ItemFields({
             )}
             {line.pricing && (
               <p className="field-hint">
-                Disponível agora: {brQuantity(line.pricing.available)} {line.pricing.unit}. Apenas
-                informativo: orçamento não reserva estoque.
+                Disponível agora: {brQuantity(line.pricing.available)} {line.pricing.unit}.{' '}
+                {stockNote}
               </p>
             )}
             {line.estimate !== null && (

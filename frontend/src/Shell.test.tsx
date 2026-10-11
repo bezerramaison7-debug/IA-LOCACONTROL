@@ -18,7 +18,11 @@ function renderApp() {
                 ? adminSession
                 : url.startsWith('/api/customers')
                   ? { items: [], total: 0 }
-                  : { status: 'ok', database: 'ok', schema: 'ok', version: '0.1.0' },
+                  : url === '/api/contracts/numbering'
+                    ? { configured: null, highest_used: null, next_number: 1 }
+                    : url === '/api/contracts/templates'
+                      ? { items: [], fields: [], blocks: [] }
+                      : { status: 'ok', database: 'ok', schema: 'ok', version: '0.1.0' },
             ),
           ),
         ),
