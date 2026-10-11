@@ -28,6 +28,8 @@ from app.core.config import PROJECT_ROOT
 from app.persistence.database import resolve_database_url
 
 logger = logging.getLogger(__name__)
+# One backup or restore at a time in this process, including the scheduler.
+OPERATION_LOCK = threading.RLock()
 NAME = re.compile(r"^locacontrol_(\d{4}-\d{2}-\d{2})_(\d{6})(_pre-restore)?\.zip$")
 SETTING_KEY = "backup"
 DEFAULTS = {"enabled": False, "time": "22:00", "keep": 14, "directory": ""}
@@ -49,9 +51,11 @@ def due(config: dict, now: datetime, names: list[str]) -> bool:
     hour, minute = (int(part) for part in config["time"].split(":"))
     if (now.hour, now.minute) < (hour, minute):
         return False
-    today = now.strftime("%Y-%m-%d")
+    today, since = now.strftime("%Y-%m-%d"), f"{hour:02d}{minute:02d}00"
+    # A set made earlier in the day (a manual one, for instance) does not cover the day's work.
     return not any(
-        (match := NAME.match(name)) and match[1] == today and not match[3] for name in names
+        (match := NAME.match(name)) and match[1] == today and match[2] >= since and not match[3]
+        for name in names
     )
 
 
@@ -113,6 +117,10 @@ class BackupManager:
     # ---- create and verify ---------------------------------------------------------
 
     def create(self, config: dict, kind: str = "manual") -> dict:
+        with OPERATION_LOCK:
+            return self._create(config, kind)
+
+    def _create(self, config: dict, kind: str) -> dict:
         database = self.database_path()
         directory = self.directory(config)
         directory.mkdir(parents=True, exist_ok=True)
@@ -182,6 +190,12 @@ class BackupManager:
                     errors.append("Manifesto ausente.")
                 else:
                     manifest = json.loads(archive.read(MANIFEST))
+                    listed = set(manifest.get("files", {}))
+                    if DATABASE_MEMBER not in listed:
+                        errors.append("Banco de dados fora do manifesto.")
+                    extra = {n for n in names if not n.endswith("/")} - listed - {MANIFEST}
+                    if extra:
+                        errors.append(f"Arquivos fora do manifesto: {len(extra)}.")
                     for member, expected in manifest.get("files", {}).items():
                         if member not in names:
                             errors.append(f"Arquivo ausente: {member}")
@@ -202,6 +216,8 @@ class BackupManager:
                             "SELECT version_num FROM alembic_version"
                         ).fetchone()[0]
                         users = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                        if not users:
+                            errors.append("Banco de dados sem nenhum usuário.")
                     finally:
                         connection.close()
         except (zipfile.BadZipFile, sqlite3.DatabaseError, json.JSONDecodeError, KeyError):
@@ -241,14 +257,31 @@ class BackupManager:
                 "Atualize o LocaControl antes de restaurá-lo.",
             )
         database = self.database_path()
-        safety = self.create(config, "pre-restore")
-        stamp = datetime.now(BUSINESS_TZ).strftime("%Y-%m-%d_%H%M%S")
-        replaced = self.directory(config) / f"replaced_{stamp}"
-        scratch = path.with_name(f".{path.name}.restore.db")
-        try:
-            with zipfile.ZipFile(path) as archive:
-                with archive.open(DATABASE_MEMBER) as source, scratch.open("wb") as out:
-                    shutil.copyfileobj(source, out)
+        with OPERATION_LOCK:
+            safety = self.create(config, "pre-restore")
+            stamp = datetime.now(BUSINESS_TZ).strftime("%Y-%m-%d_%H%M%S")
+            directory = self.directory(config)
+            replaced, staging = directory / f"replaced_{stamp}", directory / f".restore_{stamp}"
+            scratch = path.with_name(f".{path.name}.restore.db")
+            try:
+                with zipfile.ZipFile(path) as archive:
+                    # Everything is unpacked and checked before the live data is touched.
+                    with archive.open(DATABASE_MEMBER) as source, scratch.open("wb") as out:
+                        shutil.copyfileobj(source, out)
+                    for label in self.folders():
+                        root = (staging / label).resolve()
+                        root.mkdir(parents=True, exist_ok=True)
+                        for member in archive.namelist():
+                            if not member.startswith(label + "/") or member.endswith("/"):
+                                continue
+                            destination = (root / member[len(label) + 1 :]).resolve()
+                            if root not in destination.parents:
+                                raise HTTPException(
+                                    409, "Backup contém caminho de arquivo inválido."
+                                )
+                            destination.parent.mkdir(parents=True, exist_ok=True)
+                            with archive.open(member) as source, destination.open("wb") as out:
+                                shutil.copyfileobj(source, out)
                 self.engine.dispose()
                 source_db, live = sqlite3.connect(scratch), sqlite3.connect(database, timeout=10)
                 try:
@@ -261,20 +294,19 @@ class BackupManager:
                         # Moved aside, never deleted: nothing stored after the backup is lost.
                         replaced.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(folder), str(replaced / label))
-                    folder.mkdir(parents=True, exist_ok=True)
-                    root = folder.resolve()
-                    for member in archive.namelist():
-                        if not member.startswith(label + "/") or member.endswith("/"):
-                            continue
-                        destination = (folder / member[len(label) + 1 :]).resolve()
-                        if root not in destination.parents:
-                            raise HTTPException(409, "Backup contém caminho de arquivo inválido.")
-                        destination.parent.mkdir(parents=True, exist_ok=True)
-                        with archive.open(member) as source, destination.open("wb") as out:
-                            shutil.copyfileobj(source, out)
-        finally:
-            scratch.unlink(missing_ok=True)
-            self.engine.dispose()
+                    folder.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(staging / label), str(folder))
+            except (OSError, sqlite3.Error) as error:
+                logger.exception("Falha ao restaurar %s", name)
+                raise HTTPException(
+                    500,
+                    "A restauração falhou antes de terminar. O estado anterior está na cópia de "
+                    f"segurança {safety['name']}; restaure-a para voltar ao ponto de partida.",
+                ) from error
+            finally:
+                scratch.unlink(missing_ok=True)
+                shutil.rmtree(staging, ignore_errors=True)
+                self.engine.dispose()
         head = scripts.get_current_head()
         if report["revision"] != head:
             migration = Config(str(PROJECT_ROOT / "backend" / "alembic.ini"))

@@ -22,5 +22,17 @@ def money(cents: int) -> str:
     return format(Decimal(cents) / 100, ".2f")
 
 
+def signed_money(cents: int) -> str:
+    """Difference between two amounts; may be negative. Decimal, never float."""
+    return format(Decimal(cents) / 100, ".2f")
+
+
+def business_date(value: date) -> date:
+    """Rejects dates far outside any rental; keeps date arithmetic away from overflow."""
+    if not 2000 <= value.year <= 2100:
+        raise ValueError("Data fora do intervalo aceito")
+    return value
+
+
 def quantity(milli: int) -> str:
     return format(Decimal(milli) / 1000, ".3f")

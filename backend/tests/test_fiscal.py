@@ -169,3 +169,15 @@ def test_fiscal_roles(client, admin, base, role, can_read, can_write):
     assert emit.status_code == (200 if can_write else 403)
     client.cookies.clear()
     assert client.get(f"/api/fiscal/documents/{document['id']}/pdf").status_code == 401
+
+
+def test_same_request_key_with_other_content_is_a_conflict(client, admin, base):
+    person, _item = base
+    payload = fiscal_body(person["id"], amount="100.00")
+    first = post(client, admin, "fiscal/documents", payload)
+    changed = client.post(
+        "/api/fiscal/documents", json={**payload, "amount": "999.00"}, headers=admin[1]
+    )
+    assert changed.status_code == 409
+    assert post(client, admin, "fiscal/documents", payload)["id"] == first["id"]
+    assert client.get("/api/fiscal/documents").json()["total"] == 1

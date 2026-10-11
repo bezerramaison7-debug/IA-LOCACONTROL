@@ -490,3 +490,15 @@ def test_upgrade_0004_to_head_preserves_account_and_grants(migration_config):
             assert db.scalar(text("SELECT COUNT(*) FROM permissions")) == 18
     finally:
         engine.dispose()
+
+
+def test_odd_search_text_and_extreme_dates_are_handled(client, admin, base):
+    person, item = base
+    for term in ("\u00b2", "\u0663", "999999", "ORC-2026-1", "%_"):
+        assert client.get("/api/quotes", params={"q": term}).status_code == 200, term
+        assert client.get("/api/contracts", params={"q": term}).status_code == 200, term
+    far = body(person["id"], [line(item["id"], period="SEMANAL", count=999)])
+    far["start_date"] = far["valid_until"] = "9990-01-01"
+    assert client.post("/api/quotes", json=far, headers=admin[1]).status_code == 422
+    contract = {"customer_id": person["id"], "start_date": "9990-01-01", "items": far["items"]}
+    assert client.post("/api/contracts", json=contract, headers=admin[1]).status_code == 422

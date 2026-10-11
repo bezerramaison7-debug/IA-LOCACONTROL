@@ -36,13 +36,30 @@ class OperationService:
 
     # ---- helpers -------------------------------------------------------------------
 
-    def replay(self, model, key: str, contract_id: int):
-        """Same request key from the same user and contract is a repeat, not a new operation."""
+    def replay(self, model, key: str, contract_id: int, payload):
+        """Same key, user, contract and content is a repeat; anything else is a conflict."""
         existing = self.db.scalar(select(model).where(model.request_key == key))
         if existing is None:
             return False
-        if existing.contract_id != contract_id or existing.created_by != self.actor.id:
-            raise HTTPException(409, "Identificador de operação já utilizado.")
+        recorded: dict[int, int] = {}
+        for item in existing.items:
+            recorded[item.contract_item_id] = (
+                recorded.get(item.contract_item_id, 0) + item.quantity_milli
+            )
+        requested: dict[int, int] = {}
+        for line in payload.items:
+            requested[line.contract_item_id] = requested.get(line.contract_item_id, 0) + int(
+                line.quantity * 1000
+            )
+        if (
+            existing.contract_id != contract_id
+            or existing.created_by != self.actor.id
+            or existing.occurred_on != payload.occurred_on.isoformat()
+            or recorded != requested
+        ):
+            raise HTTPException(
+                409, "Identificador de operação já utilizado em outra operação. Atualize a tela."
+            )
         return True
 
     def item(self, row: Contract, item_id: int) -> ContractItem:
@@ -100,7 +117,7 @@ class OperationService:
 
     def withdraw(self, contract_id: int, payload) -> dict:
         key = str(payload.request_key)
-        if self.replay(Withdrawal, key, contract_id):
+        if self.replay(Withdrawal, key, contract_id, payload):
             return self.contracts.detail(contract_id)
         row = self.contracts.get(contract_id)
         if row.status not in {"AGUARDANDO_RETIRADA", "ATIVO"}:
@@ -173,7 +190,7 @@ class OperationService:
 
     def give_back(self, contract_id: int, payload) -> dict:
         key = str(payload.request_key)
-        if self.replay(RentalReturn, key, contract_id):
+        if self.replay(RentalReturn, key, contract_id, payload):
             return self.contracts.detail(contract_id)
         row = self.contracts.get(contract_id)
         if row.status != "ATIVO":
@@ -328,7 +345,7 @@ class OperationService:
                 count = self.whole_units(source, quantity_milli)
                 held = self.held_units(source)
                 chosen = line.equipment_ids or (list(held) if count == len(held) else [])
-                if len(chosen) != count or any(e not in held for e in chosen):
+                if len(set(chosen)) != count or any(e not in held for e in chosen):
                     raise HTTPException(
                         422,
                         f"{source.product_code}: informe quais unidades serão renovadas.",

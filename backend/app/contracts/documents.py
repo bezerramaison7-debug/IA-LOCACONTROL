@@ -51,7 +51,9 @@ def validate_template(body: str):
         raise HTTPException(422, "Campos desconhecidos no modelo: " + ", ".join(unknown) + ".")
     for line in body.splitlines():
         names = PLACEHOLDER.findall(line)
-        if any(name in BLOCKS for name in names) and PLACEHOLDER.sub("", line).strip():
+        if any(name in BLOCKS for name in names) and (
+            len(names) != 1 or PLACEHOLDER.sub("", line).strip()
+        ):
             raise HTTPException(
                 422, "Os blocos items, totals e signatures devem ficar sozinhos na linha."
             )

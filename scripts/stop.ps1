@@ -5,7 +5,12 @@ if (-not (Test-Path -LiteralPath $PidFile)) {
     Write-Host 'LocaControl não está em execução por este atalho.'
     return
 }
-$ProcessId = [int](Get-Content -LiteralPath $PidFile -TotalCount 1)
+$ProcessId = 0
+if (-not [int]::TryParse((Get-Content -LiteralPath $PidFile -TotalCount 1), [ref]$ProcessId)) {
+    Remove-Item -LiteralPath $PidFile -Force
+    Write-Host 'Registro de execução inválido removido; nada foi encerrado.'
+    return
+}
 $Process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
 if ($Process -and $Process.CommandLine -match 'uvicorn' -and $Process.CommandLine -match 'app\.main:app') {
     Stop-Process -Id $ProcessId -Force

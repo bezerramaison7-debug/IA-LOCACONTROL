@@ -27,6 +27,8 @@ from app.quotes.service import effective_status
 from app.quotes.service import view as quote_view
 
 HIDDEN_DOCUMENTS = {"SUBSTITUIDO"}
+# Cancelling and closing carry a reason written for internal use; the portal shows fixed text.
+PUBLIC_EVENTS = {"CANCELADO": "Contrato cancelado.", "ENCERRADO": "Contrato encerrado."}
 PORTAL_QUOTES = ("ENVIADO", "APROVADO", "REJEITADO", "CONVERTIDO")
 ITEM_FIELDS = (
     "product_code",
@@ -174,7 +176,11 @@ class PortalService:
             # The chain belongs to the same customer; drafts never appear in it.
             "chain": [c for c in full["chain"] if c["status"] != "RASCUNHO"],
             "events": [
-                {"kind": e["kind"], "description": e["description"], "created_at": e["created_at"]}
+                {
+                    "kind": e["kind"],
+                    "description": PUBLIC_EVENTS.get(e["kind"], e["description"]),
+                    "created_at": e["created_at"],
+                }
                 for e in full["events"]
             ],
             "documents": [

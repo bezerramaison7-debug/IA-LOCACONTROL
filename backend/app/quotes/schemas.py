@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 
 from app.masters.schemas import Input, Note, Period, exact_decimal
+from app.quotes.calc import business_date
 
 Status = Literal[
     "RASCUNHO", "ENVIADO", "APROVADO", "REJEITADO", "EXPIRADO", "CANCELADO", "CONVERTIDO"
@@ -41,6 +42,8 @@ class QuoteInput(Input):
     notes: Note = ""
     items: list[QuoteItemInput] = Field(min_length=1, max_length=100)
 
+    _dates = field_validator("start_date", "valid_until")(business_date)
+
     @model_validator(mode="after")
     def distinct_lines(self):
         keys = [(item.product_id, item.period) for item in self.items]
@@ -63,3 +66,8 @@ class TransitionInput(Input):
 class DuplicateInput(Input):
     start_date: date | None = None
     valid_until: date | None = None
+
+    @field_validator("start_date", "valid_until")
+    @classmethod
+    def sane_dates(cls, value):
+        return value if value is None else business_date(value)

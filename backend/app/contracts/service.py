@@ -144,7 +144,7 @@ class ContractService:
             "table_price": calc.money(item.table_price_cents),
             "unit_price": calc.money(item.unit_price_cents),
             "negotiated": item.unit_price_cents != item.table_price_cents,
-            "discount": format((item.table_price_cents - item.unit_price_cents) / 100, ".2f"),
+            "discount": calc.signed_money(item.table_price_cents - item.unit_price_cents),
             "total": calc.money(item.total_cents),
             "start_date": item.start_date,
             "end_date": item.end_date,
@@ -195,7 +195,7 @@ class ContractService:
             **summary(row, today, self.soon_days),
             "quote_number": quote.number if quote else None,
             "table_total": calc.money(table_total),
-            "negotiated_difference": format((table_total - row.total_cents) / 100, ".2f"),
+            "negotiated_difference": calc.signed_money(table_total - row.total_cents),
             "items": [self.item_view(i, moved[i.id], units[i.id]) for i in row.items],
             "chain": [
                 {

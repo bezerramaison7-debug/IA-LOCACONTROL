@@ -220,3 +220,33 @@ def test_report_permissions(client, admin, scene, role, dashboard, reports):
     client.cookies.clear()
     assert client.get("/api/dashboard").status_code == 401
     assert client.get("/api/reports/returns/export").status_code == 401
+
+
+def test_exported_text_is_never_a_spreadsheet_formula(client, admin):
+    from test_quotes import customer as create_customer
+
+    person = create_customer(client, admin)
+    switched = {**person, "legal_name": '=HYPERLINK("http://exemplo.invalid")'}
+    switched.pop("id")
+    for key in ("created_at", "created_by", "updated_at"):
+        switched.pop(key)
+    updated = client.put(f"/api/customers/{person['id']}", json=switched, headers=admin[1])
+    assert updated.status_code == 200, updated.text
+    item = post(client, admin, "products", {"code": "AND-1", "name": "Andaime", "unit": "UN"})
+    post(
+        client,
+        admin,
+        "prices",
+        {
+            "product_id": item["id"],
+            "period": "SEMANAL",
+            "effective_date": "2026-01-01",
+            "amount": "10.00",
+            "reason": "Tabela inicial",
+        },
+    )
+    confirmed(client, admin, person, [line(item["id"])])
+    response = client.get("/api/reports/top_customers/export", params={"format": "xlsx"})
+    assert response.status_code == 200
+    cell = load_workbook(BytesIO(response.content)).active["A2"]
+    assert cell.data_type == "s" and cell.value.startswith("=HYPERLINK")

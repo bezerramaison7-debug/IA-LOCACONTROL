@@ -36,7 +36,14 @@ try {
     $env:PYTHONPATH = $Backend
     $Alembic = @('-m', 'alembic', '-c', (Join-Path $Backend 'alembic.ini'))
     $Database = (& $ProjectPython -c "from app.core.config import Settings; from app.persistence.database import resolve_database_url; print(resolve_database_url(Settings().database_url).database or '')" | Out-String).Trim()
+    # No PowerShell 5.1, texto no stderr de um programa vira erro fatal sob 'Stop'.
+    $ErrorActionPreference = 'Continue'
     $Current = (& $ProjectPython @Alembic current 2>$null | Out-String)
+    $ErrorActionPreference = 'Stop'
+    if ($Port -ne 8000 -and -not $env:LOCACONTROL_ALLOWED_ORIGINS) {
+        # Fora da porta padrão, o endereço usado precisa constar entre as origens aceitas.
+        $env:LOCACONTROL_ALLOWED_ORIGINS = "[`"http://127.0.0.1:$Port`",`"http://localhost:$Port`"]"
+    }
     if ($Current -notmatch '\(head\)') {
         if ($Database -and (Test-Path -LiteralPath $Database)) {
             # Atualização de schema nunca roda sem uma cópia consistente do banco.

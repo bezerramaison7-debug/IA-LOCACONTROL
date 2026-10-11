@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from app.masters.schemas import Input, Note, Period, exact_decimal
+from app.quotes.calc import business_date
 from app.quotes.schemas import QuoteItemInput
 
 Status = Literal[
@@ -33,6 +34,8 @@ class ContractInput(Input):
     start_date: date
     notes: Note = ""
     items: list[QuoteItemInput] = Field(min_length=1, max_length=100)
+
+    _dates = field_validator("start_date")(business_date)
 
     @model_validator(mode="after")
     def distinct_lines(self):
@@ -71,6 +74,8 @@ class WithdrawInput(Input):
     request_key: UUID
     items: list[WithdrawLine] = Field(min_length=1, max_length=100)
 
+    _dates = field_validator("occurred_on")(business_date)
+
     @model_validator(mode="after")
     def distinct_lines(self):
         distinct([line.contract_item_id for line in self.items], "Item repetido na retirada")
@@ -104,6 +109,8 @@ class ReturnInput(Input):
     request_key: UUID
     items: list[ReturnLine] = Field(min_length=1, max_length=500)
 
+    _dates = field_validator("occurred_on")(business_date)
+
     @model_validator(mode="after")
     def distinct_units(self):
         distinct(
@@ -123,6 +130,12 @@ class RenewLine(Input):
 
     _quantity = field_validator("quantity", mode="before")(positive)
 
+    @field_validator("equipment_ids")
+    @classmethod
+    def distinct_units(cls, value):
+        distinct(value, "Equipamento repetido na renovação")
+        return value
+
     @field_validator("unit_price", mode="before")
     @classmethod
     def price_value(cls, value):
@@ -135,6 +148,8 @@ class RenewInput(Input):
     price_option: PriceOption
     notes: Note = ""
     items: list[RenewLine] = Field(min_length=1, max_length=100)
+
+    _dates = field_validator("start_date")(business_date)
 
     @model_validator(mode="after")
     def distinct_lines(self):

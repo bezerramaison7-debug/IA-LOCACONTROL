@@ -142,12 +142,34 @@ class FiscalService:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def provider_for(self, row: FiscalDocument):
+        """A document only talks to the provider and environment it was created for."""
+        provider = build_provider(self.settings)
+        if provider.name != row.provider or provider.environment != row.environment:
+            raise HTTPException(
+                409,
+                "Este documento foi criado em outro provedor ou ambiente fiscal e não pode ser "
+                "processado pela configuração atual.",
+            )
+        return provider
+
     def create(self, payload) -> dict:
         key = str(payload.request_key)
         existing = self.db.scalar(select(FiscalDocument).where(FiscalDocument.request_key == key))
         if existing:
-            if existing.created_by != self.actor.id:
-                raise HTTPException(409, "Identificador de operação já utilizado.")
+            same = (
+                existing.created_by == self.actor.id
+                and existing.customer_id == payload.customer_id
+                and existing.contract_id == payload.contract_id
+                and existing.period_start == payload.period_start.isoformat()
+                and existing.period_end == payload.period_end.isoformat()
+                and existing.amount_cents == int(payload.amount * 100)
+                and existing.description == payload.description
+            )
+            if not same:
+                raise HTTPException(
+                    409, "Identificador de operação já utilizado em outro documento."
+                )
             return view(existing)
         customer = self.db.get(Customer, payload.customer_id)
         if customer is None:
@@ -202,7 +224,7 @@ class FiscalService:
             raise HTTPException(
                 409, "Somente documento pendente ou com erro pode ser enviado ao provedor."
             )
-        provider = build_provider(self.settings)
+        provider = self.provider_for(row)
         contract = self.db.get(Contract, row.contract_id) if row.contract_id else None
         before = view(row)
         result = provider.emit(
@@ -225,7 +247,7 @@ class FiscalService:
         self.version(row, payload.version)
         if row.status != "PROCESSANDO":
             raise HTTPException(409, "Somente documento em processamento pode ser consultado.")
-        provider = build_provider(self.settings)
+        provider = self.provider_for(row)
         before = view(row)
         result = provider.status(row.provider_ref)
         self.apply(row, result, provider)
@@ -243,7 +265,7 @@ class FiscalService:
         before = view(row)
         result = None
         if row.status == "EMITIDO":
-            result = build_provider(self.settings).cancel(row.provider_ref, reason)
+            result = self.provider_for(row).cancel(row.provider_ref, reason)
             if result.status != "CANCELADO":
                 row.error_message = result.message or "O provedor não confirmou o cancelamento."
                 self.record(row, "CANCEL", result, before)

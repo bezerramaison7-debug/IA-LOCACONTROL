@@ -567,3 +567,50 @@ def test_manual_stock_edits_cannot_contradict_contract_custody(client, admin, wo
         == 200
     )
     assert balances(client, "AND-1")["LOCADO"] == "4.000"
+
+
+def test_renewal_rejects_repeated_units_and_replay_with_other_content(client, admin, world):
+    person, scaffold, generator, units = world
+    contract = confirmed(
+        client,
+        admin,
+        person,
+        [line(scaffold["id"], "4.000", "SEMANAL", 1), line(generator["id"], "2.000", "DIARIA", 1)],
+    )
+    and_item, ger_item = by_code(contract, "AND-1")["id"], by_code(contract, "GER-1")["id"]
+    first = withdrawal(
+        [
+            {"contract_item_id": and_item, "quantity": "2.000"},
+            {
+                "contract_item_id": ger_item,
+                "quantity": "2.000",
+                "equipment_ids": [units[0]["id"], units[1]["id"]],
+            },
+        ]
+    )
+    active = call(client, admin, contract["id"], "withdrawals", first)
+    # Mesma chave com outro conteúdo não pode parecer uma operação registrada.
+    other = {**first, "items": [{"contract_item_id": and_item, "quantity": "1.000"}]}
+    call(client, admin, contract["id"], "withdrawals", other, expected=409)
+    call(client, admin, contract["id"], "withdrawals", first)  # reenvio idêntico continua aceito
+    assert balances(client, "AND-1")["LOCADO"] == "2.000"
+
+    repeated = {
+        "version": active["version"],
+        "start_date": START,
+        "price_option": "ANTERIORES",
+        "items": [
+            {
+                "source_item_id": ger_item,
+                "quantity": "2.000",
+                "period": "DIARIA",
+                "period_count": 1,
+                "equipment_ids": [units[0]["id"], units[0]["id"]],
+            }
+        ],
+    }
+    call(client, admin, contract["id"], "renew", repeated, expected=422)
+    current = client.get(f"/api/contracts/{contract['id']}").json()
+    assert current["stored_status"] == "ATIVO" and len(current["chain"]) == 1
+    held = sorted(u["code"] for u in by_code(current, "GER-1")["units"] if u["state"] == "EM_POSSE")
+    assert held == ["GER-A", "GER-B"]

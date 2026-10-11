@@ -266,3 +266,17 @@ def test_upgrade_0007_to_head_grants_portal_only_to_clients(migration_config):
             assert db.scalar(text("SELECT COUNT(*) FROM permissions")) == 28
     finally:
         engine.dispose()
+
+
+def test_portal_never_shows_internal_cancel_or_close_reasons(client, admin):
+    item = product(client, admin, "AND-1")
+    person = customer(client, admin, "52998224725")
+    contract = confirmed(client, admin, person, [line(item["id"])])
+    act(client, admin, contract, "cancel", "Cliente inadimplente no cadastro de crédito")
+    auth = login(client, "ana", "CLIENTE")
+    link(client, admin, auth[0], person["id"])
+    relogin(client, "ana")
+    detail = client.get(f"/api/portal/contracts/{contract['id']}").json()
+    texts = [event["description"] for event in detail["events"]]
+    assert "Contrato cancelado." in texts
+    assert not any("inadimplente" in text for text in texts)

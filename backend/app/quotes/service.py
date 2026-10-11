@@ -106,7 +106,7 @@ def view(row: Quote, today: date) -> dict:
         **summary(row, today),
         "table_total": calc.money(table_total),
         # Positive when the negotiated total is below the price table.
-        "negotiated_difference": format((table_total - row.total_cents) / 100, ".2f"),
+        "negotiated_difference": calc.signed_money(table_total - row.total_cents),
         "items": [item_view(item) for item in row.items],
         "transitions": [
             {
@@ -431,7 +431,7 @@ def page(db, q="", status=None, customer_id=None, offset=0, limit=20):
         number = re.fullmatch(r"(?:ORC-?)?(\d{4})-(\d{1,6})", q.strip().upper())
         if number:
             conditions.append(and_(Quote.year == int(number[1]), Quote.sequence == int(number[2])))
-        elif q.strip().isdigit() and len(q.strip()) <= 6:
+        elif re.fullmatch(r"[0-9]{1,6}", q.strip()):
             conditions.append(Quote.sequence == int(q.strip()))
         stmt = stmt.where(or_(*conditions))
     if status == "EXPIRADO":

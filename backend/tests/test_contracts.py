@@ -312,3 +312,11 @@ def test_upgrade_0005_to_head_preserves_account_and_seeds_template(migration_con
 def test_today_constant_matches_service_clock():
     # Guards the shared fixtures: contracts and quotes use the same business date.
     assert START == TODAY.isoformat()
+
+
+def test_template_block_must_be_the_only_placeholder_on_its_line(client, admin):
+    mixed = {"name": "Contrato oficial", "body": "Contrato de locação\n\n{{ today }} {{ items }}"}
+    assert client.post("/api/contracts/templates", json=mixed, headers=admin[1]).status_code == 422
+    double = {"name": "Contrato oficial", "body": "Contrato de locação\n\n{{ items }}{{ totals }}"}
+    assert client.post("/api/contracts/templates", json=double, headers=admin[1]).status_code == 422
+    assert len(client.get("/api/contracts/templates").json()["items"]) == 1

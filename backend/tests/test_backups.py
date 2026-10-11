@@ -182,16 +182,21 @@ def test_configuration_schedule_and_retention(client, admin):
     assert due(config, night.replace(hour=21, minute=59), []) is False
     assert due(config, night, []) is True
     assert due(config, night, ["locacontrol_2026-10-10_220000.zip"]) is True
-    assert due(config, night, ["locacontrol_2026-10-11_090000.zip"]) is False
+    # Um backup manual feito de manhã não substitui o automático da noite.
+    assert due(config, night, ["locacontrol_2026-10-11_090000.zip"]) is True
+    assert due(config, night, ["locacontrol_2026-10-11_220000.zip"]) is False
     assert due(config, night, ["locacontrol_2026-10-11_090000_pre-restore.zip"]) is True
     assert due({**config, "enabled": False}, night, []) is False
 
     backups = manager(client)
     scheduler = BackupScheduler(backups)
     assert scheduler.tick(night.replace(hour=8)) is None
-    automatic = scheduler.tick(datetime.now(BUSINESS_TZ).replace(hour=23, minute=59))
+    # O horário configurado passa a ser 00:00: o backup do dia é devido a qualquer hora.
+    assert configure(time="00:00").status_code == 200
+    automatic = scheduler.tick()
     assert automatic["kind"] == "auto"
-    assert scheduler.tick(datetime.now(BUSINESS_TZ).replace(hour=23, minute=59)) is None
+    assert scheduler.tick() is None
+    config = client.get("/api/backups").json()["config"]
 
     directory = Path(client.app.state.settings.backup_directory)
     for name in (
@@ -225,3 +230,38 @@ def test_only_administrators_manage_backups(client, admin):
         headers=worker[1],
     )
     assert restore.status_code == 403
+
+
+def test_verification_rejects_sets_that_do_not_match_their_manifest(client, admin, base):
+    created = backup(client, admin)
+    directory = Path(client.app.state.settings.backup_directory)
+    with zipfile.ZipFile(directory / created["name"]) as content:
+        database = content.read("locacontrol.db")
+        manifest = json.loads(content.read("manifest.json"))
+
+    def forged(name, files, extra=None):
+        with zipfile.ZipFile(directory / name, "w") as content:
+            content.writestr("locacontrol.db", database)
+            for member, data in (extra or {}).items():
+                content.writestr(member, data)
+            content.writestr("manifest.json", json.dumps({**manifest, "files": files}))
+        return manager(client).verify(directory / name)
+
+    empty = forged("locacontrol_2031-01-01_000000.zip", {})
+    assert empty["ok"] is False and any("manifesto" in error for error in empty["errors"])
+    planted = forged(
+        "locacontrol_2031-01-02_000000.zip",
+        manifest["files"],
+        {"documents/plantado.pdf": b"%PDF-falso"},
+    )
+    assert planted["ok"] is False and any("fora do manifesto" in e for e in planted["errors"])
+    restore = client.post(
+        "/api/backups/locacontrol_2031-01-02_000000.zip/restore",
+        json={
+            "confirmation": "RESTAURAR locacontrol_2031-01-02_000000.zip",
+            "password": PASSWORD,
+        },
+        headers=admin[1],
+    )
+    assert restore.status_code == 409
+    assert manager(client).verify(directory / created["name"])["ok"] is True

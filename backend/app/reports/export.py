@@ -75,6 +75,10 @@ def xlsx(report: dict) -> bytes:
         cell.font = Font(bold=True)
     for row in report["rows"]:
         sheet.append([typed(row.get(c["key"]), c["type"]) for c in columns])
+        for cell in sheet[sheet.max_row]:
+            # openpyxl turns any text starting with "=" into a formula.
+            if isinstance(cell.value, str) and cell.value.startswith("="):
+                cell.data_type = "s"
     for index, c in enumerate(columns, 1):
         letter = get_column_letter(index)
         sheet.column_dimensions[letter].width = 18 if c["type"] != "text" else 34
