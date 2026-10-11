@@ -163,8 +163,8 @@ export function Imports() {
           </p>
           <p>
             Converta uma aba e um módulo por operação. Importe produtos antes de equipamentos,
-            estoque e preços. Contratos e renovações ainda aguardam seus módulos e ficam preservados
-            no arquivo original.
+            estoque e preços. O histórico de contratos e renovações da planilha ainda não é
+            convertido e fica preservado no arquivo original.
           </p>
           {canWrite && (
             <form

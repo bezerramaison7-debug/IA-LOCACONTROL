@@ -273,7 +273,25 @@ export function customerLine(contract: Pick<ContractSummary, 'customer'>) {
 }
 
 type Request = AuthContextValue['request']
-export type ContractFilters = { q: string; status: string; offset: number }
+export type ContractFilters = {
+  q: string
+  status: string
+  offset: number
+  origin?: string
+  product?: string
+  equipment?: string
+  period?: string
+  start_from?: string
+  start_to?: string
+}
+export const advancedFilterKeys = [
+  'origin',
+  'product',
+  'equipment',
+  'period',
+  'start_from',
+  'start_to',
+] as const
 export async function listContracts(request: Request, filters: ContractFilters, limit = 20) {
   return pageSchema(contractSummarySchema).parse(
     await request(
@@ -283,7 +301,13 @@ export async function listContracts(request: Request, filters: ContractFilters, 
         filters.offset +
         '&q=' +
         encodeURIComponent(filters.q) +
-        (filters.status ? '&status=' + filters.status : ''),
+        (filters.status ? '&status=' + filters.status : '') +
+        advancedFilterKeys
+          .map((key) => {
+            const value = (filters[key] || '').trim()
+            return value ? '&' + key + '=' + encodeURIComponent(value) : ''
+          })
+          .join(''),
     ),
   )
 }
@@ -291,11 +315,16 @@ export async function listContracts(request: Request, filters: ContractFilters, 
  * Operational views need every contract of a status; the API pages by 100, so this walks the
  * pages up to a fixed ceiling and reports when the list was cut.
  */
-export async function listAllContracts(request: Request, status: string, ceiling = 500) {
+export async function listAllContracts(
+  request: Request,
+  status: string,
+  ceiling = 500,
+  origin = '',
+) {
   const items: ContractSummary[] = []
   let total: number
   do {
-    const page = await listContracts(request, { q: '', status, offset: items.length }, 100)
+    const page = await listContracts(request, { q: '', status, offset: items.length, origin }, 100)
     total = page.total
     items.push(...page.items)
     if (!page.items.length) break

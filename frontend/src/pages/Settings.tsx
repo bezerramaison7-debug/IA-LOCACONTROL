@@ -1,17 +1,8 @@
-import { Monitor, Sun, Moon, Check, Palette, Bell, RotateCcw, Keyboard } from 'lucide-react'
+import { Monitor, Sun, Moon, Check, Palette, RotateCcw, Keyboard } from 'lucide-react'
 import { useTheme, type ThemePreference } from '../theme/context'
-import {
-  Badge,
-  Card,
-  PageHeader,
-  Skeleton,
-  EmptyState,
-  ErrorState,
-  type Status,
-} from '../components/ui'
+import { Badge, Card, PageHeader, type Status } from '../components/ui'
 import { Button } from '../components/Button'
 import { ConfirmDialog } from '../components/Modal'
-import { DemoForm } from '../components/DemoForm'
 import { useToast } from '../components/toast-context'
 import { HealthPanel } from '../components/HealthPanel'
 import { useAuth } from '../auth/context'
@@ -127,52 +118,7 @@ export function Settings() {
             </div>
           </div>
         </Card>
-        <Card
-          title="Interações de exemplo"
-          description="Explore os componentes desta etapa visual."
-        >
-          <div className="settings-body">
-            <div className="button-gallery">
-              <DemoForm trigger={<Button>Abrir formulário</Button>} />
-              <Button
-                variant="secondary"
-                onClick={() => notify('Exemplo de notificação. Nenhuma operação foi realizada.')}
-              >
-                <Bell size={16} aria-hidden="true" />
-                Testar notificação
-              </Button>
-              <Button disabled>Indisponível</Button>
-            </div>
-            <p className="setting-hint">
-              As prévias de formulários validam campos, sem cadastrar registros.
-            </p>
-          </div>
-        </Card>
       </div>
-      <details className="component-examples card">
-        <summary>Exemplos de carregamento, vazio e erro</summary>
-        <div className="example-grid">
-          <div>
-            <h3>Carregamento</h3>
-            <Skeleton />
-          </div>
-          <div>
-            <h3>Sem registros</h3>
-            <EmptyState
-              initial
-              title="Tudo pronto para começar"
-              description="Este é um exemplo de estado vazio."
-            />
-          </div>
-          <div>
-            <h3>Falha de carregamento</h3>
-            <ErrorState
-              message="Erro simulado para avaliar a mensagem e o botão de recuperação."
-              onRetry={() => notify('Recuperação simulada concluída.')}
-            />
-          </div>
-        </div>
-      </details>
       {user?.permissions.includes('contracts.configure') && <ContractSettings />}
       <HealthPanel />
     </>

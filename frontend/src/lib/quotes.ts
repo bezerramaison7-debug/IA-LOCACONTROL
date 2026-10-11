@@ -288,8 +288,15 @@ export async function duplicateQuote(request: Request, id: number) {
 export function downloadQuotePdf(quote: Pick<Quote, 'id' | 'number'>) {
   return downloadPdf('/quotes/' + quote.id + '/pdf', quote.number + '.pdf')
 }
-/** Authenticated same-origin download; the PDF never goes through the JSON client. */
-export async function downloadPdf(path: string, filename: string) {
+export function downloadPdf(path: string, filename: string) {
+  return downloadFile(path, filename, 'Não foi possível gerar o PDF.')
+}
+/** Authenticated same-origin download; files never go through the JSON client. */
+export async function downloadFile(
+  path: string,
+  filename: string,
+  fallback = 'Não foi possível baixar o arquivo.',
+) {
   let response: Response
   try {
     response = await fetch('/api' + path, {
@@ -301,10 +308,7 @@ export async function downloadPdf(path: string, filename: string) {
   }
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    throw new ApiError(
-      response.status,
-      typeof error.detail === 'string' ? error.detail : 'Não foi possível gerar o PDF.',
-    )
+    throw new ApiError(response.status, typeof error.detail === 'string' ? error.detail : fallback)
   }
   const url = URL.createObjectURL(await response.blob())
   const link = document.createElement('a')

@@ -12,17 +12,20 @@ import {
 import { Button } from '../components/Button'
 import { Card, EmptyState, ErrorState, PageHeader, Skeleton } from '../components/ui'
 import { ContractTable } from './contracts-shared'
+import { RenewalRequests } from './renewal-requests'
 
 const active = ['VENCIDO', 'VENCENDO', 'ATIVO']
 type View = 'retiradas' | 'devolucoes' | 'renovacoes'
 
 /** Every contract of the given statuses, in that order (overdue first when listed first). */
-function useContracts(statuses: string[]) {
+function useContracts(statuses: string[], origin = '') {
   const { request } = useAuth()
   return useQuery({
-    queryKey: ['contracts', 'all', statuses],
+    queryKey: ['contracts', 'all', statuses, origin],
     queryFn: async () => {
-      const pages = await Promise.all(statuses.map((status) => listAllContracts(request, status)))
+      const pages = await Promise.all(
+        statuses.map((status) => listAllContracts(request, status, 500, origin)),
+      )
       return {
         items: pages.flatMap((page) => page.items),
         truncated: pages.some((page) => page.truncated),
@@ -179,9 +182,10 @@ function Returns() {
 function Renewals() {
   const can = useContractPermissions()
   const renewable = useContracts(active)
-  const all = useContracts([''])
+  const renewals = useContracts([''], 'RENOVACAO')
   return (
     <>
+      <RenewalRequests />
       <ContractsCard
         title="Contratos que podem ser renovados"
         description="Ativos, vencendo e vencidos. A renovação cria o próximo número da cadeia (9193 → 9193.1)."
@@ -198,8 +202,8 @@ function Renewals() {
       <ContractsCard
         title="Renovações registradas"
         description="Contratos criados por renovação, com a opção de preço escolhida."
-        query={all}
-        rows={(all.data?.items || []).filter((row) => row.origin === 'RENOVACAO')}
+        query={renewals}
+        rows={renewals.data?.items || []}
         empty="Nenhuma renovação registrada"
         actions={(row) => <OpenLink row={row} label="Abrir" />}
       />
@@ -220,7 +224,8 @@ const views = {
   },
   renovacoes: {
     title: 'Renovações',
-    description: 'Renove contratos ativos e acompanhe as renovações já registradas.',
+    description:
+      'Decida os pedidos dos clientes, renove contratos ativos e acompanhe as renovações registradas.',
     Body: Renewals,
   },
 }

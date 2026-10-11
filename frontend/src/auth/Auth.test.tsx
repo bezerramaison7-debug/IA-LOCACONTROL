@@ -3,7 +3,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 import App from '../App'
-import { adminSession } from '../test/auth-fixture'
+import { adminSession, dashboard } from '../test/auth-fixture'
 
 function renderAuth(handler: (url: string, init?: RequestInit) => Response) {
   vi.stubGlobal(
@@ -25,6 +25,7 @@ it('requires login, submits credentials and csrf logout without persisting token
   renderAuth((url) => {
     if (url.endsWith('/login')) return json(adminSession)
     if (url.endsWith('/logout')) return new Response(null, { status: 204 })
+    if (url.endsWith('/dashboard')) return json(dashboard)
     return json({ detail: 'Entre novamente.' }, 401)
   })
   await screen.findByRole('heading', { name: 'Entrar na sua conta' })

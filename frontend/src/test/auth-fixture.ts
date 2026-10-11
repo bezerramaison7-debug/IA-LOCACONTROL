@@ -33,9 +33,52 @@ export const adminSession = {
       'contracts.negotiate',
       'contracts.configure',
       'operations.write',
+      'reports.read',
+      'fiscal.read',
+      'fiscal.write',
+      'backups.manage',
     ],
     created_at: 1789254000,
     updated_at: 1789254000,
   },
   csrf_token: 'test-only-csrf',
+}
+/** A customer account: only the portal permission, as granted to the CLIENTE role. */
+export const customerSession = {
+  user: {
+    ...adminSession.user,
+    id: 9,
+    username: 'cliente',
+    name: 'Cliente de teste',
+    role_codes: ['CLIENTE'],
+    permissions: ['portal.access'],
+  },
+  csrf_token: 'test-only-csrf',
+}
+/** Shape of GET /api/dashboard, shared by the unit tests and the mocked visual suite. */
+export const dashboard = {
+  cards: {
+    active_contracts: 4,
+    awaiting_withdrawal: 1,
+    due_soon: 2,
+    overdue: 1,
+    rented_items: '12.500',
+    equipment_available: 7,
+    equipment_maintenance: 3,
+    contracted_value: '15234.50',
+    open_quotes: 5,
+  },
+  due_soon_days: 3,
+  due_contracts: [],
+  recent_events: [
+    {
+      id: 1,
+      contract_id: 1,
+      contract_number: '9193',
+      customer: 'Cliente Alfa',
+      kind: 'RETIRADA',
+      description: 'Retirada registrada.',
+      created_at: 1789254000,
+    },
+  ],
 }

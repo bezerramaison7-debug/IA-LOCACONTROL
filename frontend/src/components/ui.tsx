@@ -4,12 +4,11 @@ import {
   CircleX,
   CircleMinus,
   TriangleAlert,
-  Info,
   SearchX,
   RefreshCw,
   Inbox,
 } from 'lucide-react'
-import type { ReactNode, InputHTMLAttributes, SelectHTMLAttributes } from 'react'
+import type { ComponentType, ReactNode, InputHTMLAttributes, SelectHTMLAttributes } from 'react'
 import { useId } from 'react'
 import { Button } from './Button'
 
@@ -39,6 +38,25 @@ export function Badge({ status }: { status: Status }) {
     <span className={`badge badge-${tone}`}>
       <Icon size={14} aria-hidden="true" />
       {status}
+    </span>
+  )
+}
+
+export type Tone = 'success' | 'warning' | 'danger' | 'muted' | 'info'
+/** Status of any module: always icon + text + colour, never colour alone. */
+export function Tag({
+  tone,
+  icon: Icon,
+  children,
+}: {
+  tone: Tone
+  icon: ComponentType<{ size?: number; 'aria-hidden'?: boolean | 'true' | 'false' }>
+  children: ReactNode
+}) {
+  return (
+    <span className={`badge badge-${tone}`}>
+      <Icon size={14} aria-hidden="true" />
+      {children}
     </span>
   )
 }
@@ -167,18 +185,6 @@ export function Skeleton({ rows = 3 }: { rows?: number }) {
       {Array.from({ length: rows }, (_, i) => (
         <div aria-hidden="true" className="skeleton" key={i} />
       ))}
-    </div>
-  )
-}
-
-export function DemoNotice() {
-  return (
-    <div className="demo-notice">
-      <Info size={16} aria-hidden="true" />
-      <p>
-        <strong>Modo demonstração</strong>
-        <span> · Dados fictícios para avaliação visual. Nenhuma operação comercial é salva.</span>
-      </p>
     </div>
   )
 }

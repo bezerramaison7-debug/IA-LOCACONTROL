@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useAuth, pathPermission } from './context'
+import { canOpen, homePath, isPortalUser, useAuth } from './context'
 import { ErrorState, Skeleton } from '../components/ui'
 
 export function RequireAuth() {
@@ -20,9 +20,9 @@ export function RequireAuth() {
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />
   if (user.must_change_password && location.pathname !== '/perfil')
     return <Navigate to="/perfil" replace />
-  const permission = pathPermission(location.pathname)
-  if (permission && !user.permissions.includes(permission)) {
-    if (location.pathname === '/') return <Navigate to="/perfil" replace />
+  if (!canOpen(user, location.pathname)) {
+    if (location.pathname === '/')
+      return <Navigate to={isPortalUser(user) ? homePath(user) : '/perfil'} replace />
     return (
       <main className="auth-page">
         <ErrorState message="Você não tem permissão para acessar esta área." />

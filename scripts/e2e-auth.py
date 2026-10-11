@@ -73,6 +73,11 @@ def main():
         env["LOCACONTROL_IMPORT_DIRECTORY"] = str(Path(folder) / "imports")
         # Generated contract PDFs stay in the temporary folder, never in data/documents.
         env["LOCACONTROL_DOCUMENT_DIRECTORY"] = str(Path(folder) / "documents")
+        # Fiscal files and backup sets are temporary too; no scheduled backup during the run.
+        env["LOCACONTROL_FISCAL_DIRECTORY"] = str(Path(folder) / "fiscal")
+        env["LOCACONTROL_BACKUP_DIRECTORY"] = str(Path(folder) / "backups")
+        env["LOCACONTROL_BACKUP_SCHEDULER"] = "false"
+        env["LOCACONTROL_FISCAL_PROVIDER"] = "fake"
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         with (Path(folder) / "server.log").open("w", encoding="utf-8") as log:
             server = subprocess.Popen(

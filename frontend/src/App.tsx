@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { HashRouter, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from './theme/ThemeProvider'
 import { ToastProvider } from './components/ToastProvider'
 import { AppShell } from './layout/AppShell'
@@ -24,6 +24,10 @@ const Maintenance = lazy(() =>
 )
 const Users = lazy(() => import('./pages/Users').then((m) => ({ default: m.Users })))
 const Roles = lazy(() => import('./pages/Roles').then((m) => ({ default: m.Roles })))
+const Reports = lazy(() => import('./pages/Reports').then((m) => ({ default: m.Reports })))
+const Fiscal = lazy(() => import('./pages/Fiscal').then((m) => ({ default: m.Fiscal })))
+const Backups = lazy(() => import('./pages/Backups').then((m) => ({ default: m.Backups })))
+const Portal = lazy(() => import('./pages/Portal').then((m) => ({ default: m.Portal })))
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })))
 
 const Settings = lazy(() =>
@@ -70,6 +74,27 @@ export default function App() {
                       element={<Operations key="devolucoes" view="devolucoes" />}
                     />
                     <Route path="manutencao" element={<Maintenance />} />
+                    <Route path="relatorios" element={<Reports />} />
+                    <Route path="faturamento" element={<Fiscal />} />
+                    <Route path="fiscal" element={<Navigate to="/faturamento" replace />} />
+                    <Route path="backups" element={<Backups />} />
+                    <Route path="portal" element={<Portal key="inicio" view="inicio" />} />
+                    {(
+                      [
+                        'contratos',
+                        'equipamentos',
+                        'orcamentos',
+                        'renovacoes',
+                        'documentos',
+                        'cadastro',
+                      ] as const
+                    ).map((view) => (
+                      <Route
+                        key={view}
+                        path={'portal/' + view}
+                        element={<Portal key={view} view={view} />}
+                      />
+                    ))}
                     <Route
                       path="configuracoes"
                       element={

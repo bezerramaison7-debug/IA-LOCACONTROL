@@ -2075,3 +2075,41 @@ dd {
     padding: 4px 16px 16px;
   }
 }
+
+/* Reports, portal, fiscal and backups reuse the shared tokens. */
+.metric-value {
+  overflow-wrap: anywhere;
+}
+.number-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.report-pickers {
+  padding-top: 0;
+}
+.advanced-filters {
+  border-top: 1px solid var(--border);
+}
+.advanced-filters summary {
+  cursor: pointer;
+  padding: 14px 20px;
+  font-weight: 600;
+  color: var(--active-text);
+}
+.portal-note,
+.fiscal-provider {
+  margin-bottom: 20px;
+}
+.portal-note svg {
+  display: inline;
+  vertical-align: -3px;
+  margin-right: 4px;
+}
+.quote-notice + .card,
+.quote-notice + .field-hint,
+.metrics-grid + .card {
+  margin-top: 20px;
+}
+.quote-notice + .field-hint {
+  margin-top: 10px;
+}

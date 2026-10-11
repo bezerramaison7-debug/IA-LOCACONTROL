@@ -17,6 +17,11 @@ import {
   UserRoundCog,
   History,
   Settings,
+  DatabaseBackup,
+  Home,
+  FileCheck,
+  ClipboardCheck,
+  IdCard,
 } from 'lucide-react'
 
 export const navigation = [
@@ -47,22 +52,40 @@ export const navigation = [
   },
   {
     label: 'Financeiro',
-    items: [
-      { path: '/faturamento', label: 'Faturamento', icon: Wallet, ready: false },
-      { path: '/fiscal', label: 'Fiscal', icon: Receipt, ready: false },
-    ],
+    items: [{ path: '/faturamento', label: 'Faturamento e fiscal', icon: Wallet, ready: true }],
   },
   {
     label: 'Gestão',
     items: [
-      { path: '/relatorios', label: 'Relatórios', icon: ChartNoAxesCombined, ready: false },
+      { path: '/relatorios', label: 'Relatórios', icon: ChartNoAxesCombined, ready: true },
       { path: '/importacoes', label: 'Importações', icon: Upload, ready: true },
       { path: '/usuarios', label: 'Usuários', icon: UserRoundCog, ready: true },
       { path: '/perfis', label: 'Perfis e permissões', icon: Users, ready: true },
       { path: '/auditoria', label: 'Auditoria', icon: History, ready: true },
+      { path: '/backups', label: 'Backups', icon: DatabaseBackup, ready: true },
       { path: '/perfil', label: 'Meu perfil', icon: UserRoundCog, ready: true },
       { path: '/configuracoes', label: 'Configurações', icon: Settings, ready: true },
     ],
   },
 ]
 export const navigationItems = navigation.flatMap((group) => group.items)
+
+/** Customer accounts get this menu only; no internal area is listed for them. */
+export const portalNavigation: typeof navigation = [
+  {
+    label: 'Portal do cliente',
+    items: [
+      { path: '/portal', label: 'Início', icon: Home, ready: true },
+      { path: '/portal/contratos', label: 'Meus contratos', icon: FileText, ready: true },
+      { path: '/portal/equipamentos', label: 'Meus equipamentos', icon: Drill, ready: true },
+      { path: '/portal/orcamentos', label: 'Orçamentos', icon: ClipboardList, ready: true },
+      { path: '/portal/renovacoes', label: 'Renovações', icon: ClipboardCheck, ready: true },
+      { path: '/portal/documentos', label: 'Documentos', icon: FileCheck, ready: true },
+      { path: '/portal/cadastro', label: 'Meu cadastro', icon: IdCard, ready: true },
+    ],
+  },
+  {
+    label: 'Conta',
+    items: [{ path: '/perfil', label: 'Meu perfil', icon: UserRoundCog, ready: true }],
+  },
+]

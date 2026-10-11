@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { Boxes, LockKeyhole } from 'lucide-react'
-import { useAuth, pathPermission } from '../auth/context'
+import { canOpen, homePath, useAuth } from '../auth/context'
 import { Button } from '../components/Button'
 import { Field } from '../components/ui'
 import { ThemeSelect } from '../components/ThemeSelect'
@@ -24,18 +24,23 @@ export function Login() {
     requested !== '/login'
       ? requested
       : '/'
-  const permission = pathPermission(target)
-  if (user)
+  if (user) {
+    const home = homePath(user)
     return (
       <Navigate
         to={
-          user.must_change_password || (permission && !user.permissions.includes(permission))
+          user.must_change_password
             ? '/perfil'
-            : target
+            : target !== '/' && target !== '/perfil' && canOpen(user, target)
+              ? target
+              : canOpen(user, home)
+                ? home
+                : '/perfil'
         }
         replace
       />
     )
+  }
   return (
     <main className="auth-page">
       <section className="login-card" aria-labelledby="login-title">

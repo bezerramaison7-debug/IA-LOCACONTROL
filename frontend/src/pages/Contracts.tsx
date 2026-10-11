@@ -4,6 +4,8 @@ import { useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useAuth } from '../auth/context'
 import {
+  advancedFilterKeys,
+  contractOrigins,
   contractStatuses,
   getContract,
   listContracts,
@@ -11,6 +13,7 @@ import {
   type Contract,
   type ContractFilters,
 } from '../lib/contracts'
+import { periods } from '../lib/masters'
 import { Button } from '../components/Button'
 import { Card, EmptyState, ErrorState, Field, PageHeader, Select, Skeleton } from '../components/ui'
 import { useToast } from '../components/toast-context'
@@ -41,7 +44,10 @@ function ContractList({
     queryFn: () => listContracts(request, filters),
     retry: false,
   })
-  const filtered = !!filters.q || !!filters.status
+  const advanced = advancedFilterKeys.some((key) => !!filters[key])
+  const filtered = !!filters.q || !!filters.status || advanced
+  const [open, setOpen] = useState(advanced)
+  const change = (next: Partial<ContractFilters>) => setFilters({ ...filters, ...next, offset: 0 })
   return (
     <Card
       title="Lista de contratos"
@@ -68,6 +74,65 @@ function ContractList({
           ))}
         </Select>
       </div>
+      <details
+        className="advanced-filters"
+        open={open}
+        onToggle={(e) => setOpen(e.currentTarget.open)}
+      >
+        <summary>Filtros avançados{advanced ? ' (em uso)' : ''}</summary>
+        <div className="master-filters">
+          <Select
+            label="Origem"
+            value={filters.origin || ''}
+            onChange={(e) => change({ origin: e.target.value })}
+          >
+            <option value="">Todas</option>
+            {Object.entries(contractOrigins).map(([key, text]) => (
+              <option key={key} value={key}>
+                {text}
+              </option>
+            ))}
+          </Select>
+          <Field
+            label="Produto"
+            value={filters.product || ''}
+            maxLength={160}
+            placeholder="Código ou nome"
+            onChange={(e) => change({ product: e.target.value })}
+          />
+          <Field
+            label="Equipamento"
+            value={filters.equipment || ''}
+            maxLength={160}
+            placeholder="Código, patrimônio ou serial"
+            onChange={(e) => change({ equipment: e.target.value })}
+          />
+          <Select
+            label="Período de locação"
+            value={filters.period || ''}
+            onChange={(e) => change({ period: e.target.value })}
+          >
+            <option value="">Todos</option>
+            {Object.entries(periods).map(([key, text]) => (
+              <option key={key} value={key}>
+                {text}
+              </option>
+            ))}
+          </Select>
+          <Field
+            label="Início a partir de"
+            type="date"
+            value={filters.start_from || ''}
+            onChange={(e) => change({ start_from: e.target.value })}
+          />
+          <Field
+            label="Início até"
+            type="date"
+            value={filters.start_to || ''}
+            onChange={(e) => change({ start_to: e.target.value })}
+          />
+        </div>
+      </details>
       {query.isPending ? (
         <Skeleton />
       ) : query.isError ? (
