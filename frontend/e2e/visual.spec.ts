@@ -4,7 +4,7 @@ import { adminSession } from '../src/test/auth-fixture'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (route) => route.fulfill({ json: adminSession }))
-  for (const module of ['customers', 'products', 'equipment'])
+  for (const module of ['customers', 'products', 'equipment', 'quotes'])
     await page.route('**/api/' + module + '**', (route) =>
       route.fulfill({ json: { items: [], total: 0 } }),
     )
@@ -33,7 +33,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto(`/#${path}`)
       await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      if (!['/clientes', '/produtos', '/equipamentos'].includes(path))
+      if (!['/clientes', '/produtos', '/equipamentos', '/orcamentos'].includes(path))
         await expect(page.getByText('Modo demonstração')).toBeVisible()
       else await expect(page.getByText('Modo demonstração')).toHaveCount(0)
       const overflow = await page.evaluate(
@@ -98,10 +98,10 @@ test('keyboard, dialogs, search, table filters and page navigation', async ({ pa
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Novo orçamento' })).toBeFocused()
   await page.getByRole('button', { name: 'Buscar páginas' }).click()
-  await page.getByRole('textbox', { name: 'Nome da página' }).fill('Orçamentos')
-  await page.getByRole('dialog').getByRole('link', { name: 'Orçamentos' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Orçamentos' })).toBeVisible()
-  await page.getByRole('textbox', { name: 'Buscar em orçamentos' }).fill('Ninguém')
+  await page.getByRole('textbox', { name: 'Nome da página' }).fill('Contratos')
+  await page.getByRole('dialog').getByRole('link', { name: 'Contratos' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Contratos' })).toBeVisible()
+  await page.getByRole('textbox', { name: 'Buscar em contratos' }).fill('Ninguém')
   await expect(page.getByText('Nenhum resultado encontrado')).toBeVisible()
   await page.getByRole('button', { name: 'Limpar filtros' }).first().click()
   await page.getByRole('combobox', { name: 'Estado da prévia' }).selectOption('error')

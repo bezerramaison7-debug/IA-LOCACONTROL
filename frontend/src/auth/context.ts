@@ -24,6 +24,7 @@ export function pathPermission(path: string) {
     '/equipamentos': 'equipment.read',
     '/estoque': 'stock.read',
     '/precos': 'prices.read',
+    '/orcamentos': 'quotes.read',
     '/importacoes': 'imports.read',
   }
   if (masters[path]) return masters[path]

@@ -282,6 +282,7 @@ export function AppShell() {
             '/equipamentos',
             '/estoque',
             '/precos',
+            '/orcamentos',
             '/importacoes',
           ].includes(location.pathname) && <DemoNotice />}
           <Outlet />

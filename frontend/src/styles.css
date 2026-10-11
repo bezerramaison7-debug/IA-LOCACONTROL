@@ -1856,3 +1856,129 @@ dd {
     padding: 18px;
   }
 }
+
+/* Quotes: editor lines, notices and totals built only from the shared theme tokens. */
+.field textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 10px 12px;
+  border: 1px solid var(--control-border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 7px;
+  font: inherit;
+  resize: vertical;
+}
+.field textarea[aria-invalid='true'],
+.field select[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.field select {
+  width: 100%;
+  min-width: 0;
+}
+.quote-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.quote-picker > .error-state {
+  grid-column: 1 / -1;
+}
+.quote-item {
+  margin: 0;
+  min-width: 0;
+}
+.quote-item-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.quote-line-info {
+  display: grid;
+  gap: 8px;
+  line-height: 1.6;
+}
+.quote-notice {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--info-bg);
+  color: var(--info);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.quote-notice ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.quote-notice-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.page-heading + .quote-notice {
+  margin-bottom: 20px;
+}
+.quote-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.quote-check input {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.quote-check small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.quote-preview-total {
+  font-size: 16px;
+}
+.quote-totals {
+  display: grid;
+  gap: 10px;
+  justify-content: end;
+  padding: 20px 22px;
+  border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.quote-totals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+}
+.quote-totals dt {
+  color: var(--muted);
+}
+.quote-totals dd {
+  margin: 0;
+}
+.quote-total {
+  font-size: 17px;
+  font-weight: 650;
+}
+.quote-total dt {
+  color: var(--text);
+}
+@media (max-width: 1100px) {
+  .quote-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .quote-picker,
+  .quote-item-grid {
+    grid-template-columns: 1fr;
+  }
+  .quote-totals {
+    justify-content: stretch;
+  }
+}

@@ -136,11 +136,6 @@ export const catalogData: Record<string, DemoRow[]> = {
       status: 'Disponível',
     },
   ],
-  orcamentos: contracts.map((row, i) => ({
-    ...row,
-    id: `ORC-DEMO-00${i + 1}`,
-    status: 'Rascunho',
-  })),
   contratos: contracts,
 }
 

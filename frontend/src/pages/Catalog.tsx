@@ -37,16 +37,6 @@ const definitions = {
     eyebrow: 'OPERAÇÃO',
     empty: 'Conheça a visão da sua frota',
   },
-  orcamentos: {
-    title: 'Orçamentos',
-    description: 'Acompanhe as propostas desde o primeiro contato.',
-    action: 'Novo orçamento',
-    name: 'Cliente / itens',
-    detail: 'Período',
-    date: 'Validade',
-    eyebrow: 'COMERCIAL',
-    empty: 'Uma boa locação começa com uma proposta',
-  },
   contratos: {
     title: 'Contratos',
     description: 'As informações de cada locação reunidas em um só lugar.',
