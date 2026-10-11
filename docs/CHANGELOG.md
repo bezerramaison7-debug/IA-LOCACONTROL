@@ -1,5 +1,25 @@
 # LocaControl — Changelog
 
+## 2026-10-11 — Backends das etapas 5 a 11, telas de orçamentos e contratos
+
+Commits na branch `dev/etapas-4-12`, do baseline `2b3d1d2` (em `master`) até `892b6bd`.
+
+- Baseline (`2b3d1d2`): primeiro commit do repositório, com as etapas 0–3 concluídas e a etapa 4 parcial.
+- Etapa 5 (`d687a00`, `6f7dffc`): orçamentos com cálculo exato, snapshots de preço, estados, numeração ORC-AAAA-NNNNNN, duplicação, aprovação, PDF e tela real. Migration 0005_quotes.
+- Etapas 6 e 7 (`7420b75`, `2caa3e3`, `d3916f3`): contratos diretos ou de orçamento aprovado, numeração configurável com renovações `N.1`, `N.2`, estados com vencendo/vencido derivados, modelo de contrato PROVISÓRIO e PDFs versionados, retirada, devolução com condição e destino, renovação com três opções de preço, encerramento automático e linha do tempo; telas de contratos, renovações, retiradas, devoluções e manutenção. Migration 0006_contracts.
+- Estoque (`2b44e8e`): ajuste manual não pode contradizer a custódia de contratos ativos.
+- Etapa 8 (`f92cb22`): API de dashboard, resumo por cliente, doze relatórios e exportação Excel/PDF. Migration 0007_reports. Sem tela.
+- Etapa 9 (`a6638d6`): API do portal do cliente com isolamento por vínculo e solicitações de renovação que não renovam sozinhas. Migration 0008_portal. Sem tela.
+- Etapa 10 (`68374a7`): documentos fiscais, interface FiscalProvider e provedor de simulação sem valor fiscal. Migration 0009_fiscal. Sem tela e sem provedor real.
+- Etapa 11 (`70c1d5e`, `3062f8f`): backup em `.zip` com manifesto, verificação, agendamento diário, retenção e restauração com frase + senha; atalhos "Iniciar LocaControl" e "Parar LocaControl", `scripts/launch.ps1`, `stop.ps1` e `update.ps1`. Migration 0010_backups. Sem tela de backups.
+- Etapa 12, início (`892b6bd`): teste de aceite que percorre pela API o cenário oficial da versão 1.0 (`backend/tests/test_release_journey.py`); 1 aprovado quando executado isoladamente.
+- Dependência nova: reportlab (PDF).
+- Banco local: migrations 0005–0010 aplicadas com cópias prévias em `data/backups`; revisão 0010_backups, 32 permissões, 1 usuário preservado, sem dados comerciais.
+- Verificação observada: `pytest backend/tests` com 133 aprovados em `d3916f3` (132 na execução anterior do mesmo dia, antes dos últimos commits). Build e E2E de frontend não foram reexecutados na sessão de documentação; o commit `2caa3e3` registra Vitest 49, E2E real 20 cenários e visual 16 conforme relatório do agente que construiu as telas.
+- Decisões registradas: ADR-015 a ADR-021. Regras do usuário: numeração, vencendo/vencido calculados, antecedência de 3 dias e modelo provisório.
+- Pendente: Excel real e conversão do histórico de contratos (etapa 4); telas de dashboard real, relatórios, portal, fiscal e backups; modelo real de contrato; dados da locadora; regras fiscais, provedor e sandbox; etapa 12; decisões de publicação. Nada foi publicado.
+- Documentação atualizada: DECISIONS, BUSINESS_RULES, BACKEND_SCHEMA, DATABASE, SECURITY, PRD, TRD, APP_FLOW, ARCHITECTURE, PUBLICATION_ROADMAP, PROJECT_STATE, AI_HANDOFF e README.
+
 ## 2026-10-11 — Documentos estruturantes e prompt integral de continuidade
 - Criados PRD, TRD, APP_FLOW, DESIGN_BRIEF e BACKEND_SCHEMA com requisitos, jornadas, direção visual e separação de schema existente/proposto.
 - Complementado DEVELOPMENT_PLAN com tarefas, responsáveis, dependências, rastreabilidade e critérios; preservados prompts oficiais.

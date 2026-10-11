@@ -1,81 +1,78 @@
 # LocaControl — Estado do projeto
 
-Atualização: 2026-10-08 (America/Sao_Paulo).
+Atualização: 2026-10-11 (America/Sao_Paulo). Branch `dev/etapas-4-12`, commit `892b6bd`; baseline `2b3d1d2` em `master`. Sem repositório remoto configurado.
 
-Etapa 3: **CONCLUÍDA**, incluindo migrations locais e preservação da conta.
-Etapa atual: **4 — Importador do Excel legado (PARCIAL: fluxo implementado, homologação real pendente)**.
-Etapas 5–12: NÃO INICIADAS e sem autorização nesta execução.
+Legenda: EXISTENTE = implementado e coberto por testes automatizados; PARCIAL = falta a parte indicada; PENDENTE = não iniciado. Nenhuma etapa foi homologada com dados reais da locadora: o banco local não tem dados comerciais.
 
-## Entregas verificadas
+## Estado por etapa
 
-- Etapas 0–2: fundação, interface responsiva, temas, identidade, permissões e auditoria.
-- Etapa 3: clientes com endereços; produtos; equipamentos; seis saldos e movimentos; preços por período/vigência com histórico.
-- Frontend comercial real em Masters.tsx, Stock.tsx e Prices.tsx, com busca/paginação, filtros, edição, conflitos, estados e permissões.
-- Precisão: centavos e milésimos inteiros no banco, Decimal nos serviços e strings decimais na API.
-- Estoque não negativo, deduplicação de solicitações, baixa definitiva e bloqueio de baixa de reservado/locado.
-- Documentos PF/PJ: formato, normalização e unicidade; não declarar consulta externa ou verificação de dígitos implementadas.
-- Excel: o usuário faz upload pela interface. Nenhuma busca por caminho local.
-- Upload .xlsx/.xlsm, análise dinâmica de abas, amostra, fórmulas, mesclas, tipos/formatação de origem e valores salvos.
-- Mapeamento por aba/módulo para clientes, produtos, equipamentos, entradas de estoque e preços.
-- DRY RUN sem persistência comercial/auditoria/origens; confirmação com nova validação e digest da prévia.
-- Linhas problemáticas reportadas individualmente; linhas válidas importadas na mesma operação.
-- ImportBatch, checksum SHA-256, original preservado, origem por arquivo/aba/linha, relatório JSON e histórico.
-- Nova conversão do mesmo original para outra aba ou módulo; origem já importada é ignorada.
-- Permissões imports.read/write, inicialmente administrador; escrita também exige permissão do módulo de destino.
+| Etapa | Backend | Tela | Estado | O que falta |
+| --- | --- | --- | --- | --- |
+| 0–2 Fundação, interface, identidade | EXISTENTE | EXISTENTE | CONCLUÍDA | — |
+| 3 Cadastros, estoque, preços | EXISTENTE | EXISTENTE | CONCLUÍDA | — |
+| 4 Importador do Excel | EXISTENTE para clientes, produtos, equipamentos, estoque inicial e preços | EXISTENTE | PARCIAL | Excel real nunca foi enviado (`import_batches` vazia); conversão do histórico de contratos/renovações não implementada (IMP-04B) |
+| 5 Orçamentos | EXISTENTE | EXISTENTE (`6f7dffc`) | Implementada; validação do usuário pendente | Dados da locadora no cabeçalho do PDF |
+| 6 Contratos e documentos | EXISTENTE | EXISTENTE (`2caa3e3`) | PARCIAL | Modelo de contrato é PROVISÓRIO; sem DOCX; sem upload do documento assinado |
+| 7 Retirada, renovação, devolução | EXISTENTE | EXISTENTE (`2caa3e3`) | Implementada; validação do usuário pendente | Sem reserva na confirmação; manutenção sem registro próprio |
+| 8 Dashboard e relatórios | EXISTENTE (API) | PENDENTE | PARCIAL | Dashboard da interface ainda é demonstração; não há tela de relatórios |
+| 9 Portal do cliente | EXISTENTE (API) | PENDENTE | PARCIAL | Telas do portal e do vínculo conta–cliente |
+| 10 Faturamento e fiscal | EXISTENTE só em simulação | PENDENTE | PARCIAL | Telas; regras da contabilidade; provedor real; credenciais de sandbox |
+| 11 Backup, restauração, inicialização | EXISTENTE (API e scripts Windows) | PENDENTE (backups) | PARCIAL | Tela de backups; ensaio de restauração com dados reais |
+| 12 QA, E2E integral, guias, release | Teste de aceite pela API (`892b6bd`) | — | INICIADA | Auditoria, E2E integral pela interface e guias; depende das telas das etapas 8–11 |
 
-## Limites e aceite restante da Etapa 4
+As telas das etapas 6 e 7 foram entregues por outro agente no commit `2caa3e3`; esta atualização documental conferiu as rotas e os arquivos, não reexecutou build nem E2E. Ao fim desta atualização havia trabalho NÃO commitado de outro agente em `frontend/` (arquivos novos de relatórios, portal, fiscal e backups em `src/lib` e `src/pages`): está em andamento e não foi conferido, por isso as telas das etapas 8–11 continuam registradas como PENDENTES.
 
-O Excel real não foi fornecido: o fluxo permite que o cliente o envie dentro do sistema. Não foi presumido layout definitivo. Homologar o arquivo real após upload, conferir cabeçalhos, fórmulas, códigos, referências, dados históricos e totais com o usuário.
+## O que existe e foi conferido no código
 
-Contratos e renovações dependem das Etapas 6/7 e não são convertidos para entidades comerciais ainda inexistentes. Abas/colunas sem destino ficam explicitamente pendentes no relatório e preservadas no original. Portanto não declarar conversão integral do histórico da empresa concluída.
+- Orçamentos: valor do item = quantidade × preço do período × nº de períodos; períodos de 1/7/15/30 dias corridos; preço de tabela e negociado guardados; estados rascunho, enviado, aprovado, rejeitado, cancelado e convertido, com expirado derivado; número ORC-AAAA-NNNNNN; duplicação; PDF.
+- Contratos: diretos ou de orçamento aprovado (conversão única); número `N` e renovações `N.1`, `N.2`; próximo número configurável; estados rascunho, aguardando retirada, ativo, encerrado e cancelado, com vencendo/vencido derivados da data de devolução (antecedência padrão de 3 dias).
+- Documentos de contrato: modelos com placeholders, PDF versionado e imutável com checksum; assinado nunca é substituído.
+- Operação: retirada parcial ou total com vínculo de unidade física, devolução com condição e destino, renovação parcial ou total com três opções de preço e sem movimentar estoque, encerramento automático, linha do tempo por cadeia, repetição segura por identificador de operação.
+- Estoque: ajuste manual não contradiz a custódia de contratos ativos.
+- Relatórios: dashboard, resumo por cliente, doze relatórios e exportação Excel/PDF; valor contratado nunca apresentado como recebido.
+- Portal: dados somente do cliente vinculado; registro alheio responde 404; solicitação de renovação exige decisão interna e não renova sozinha.
+- Fiscal: documentos, trilha de retornos e interface de provedor; único provedor é a simulação, sem valor fiscal.
+- Backup: conjunto `.zip` com banco, importações, documentos, fiscal e manifesto; verificação; agendamento diário opcional; retenção; restauração com frase + senha, cópia prévia e sem apagar arquivos.
+- Windows: "Iniciar LocaControl.cmd", "Parar LocaControl.cmd", `scripts/launch.ps1`, `stop.ps1`, `update.ps1`.
 
-Uma aba/módulo por operação. Produtos antes de equipamentos/estoque/preços. Não sobrescrever registros existentes: conflitos exigem revisão. Estoque inicial exige produto ainda sem movimentos; ajustes posteriores são manuais no módulo Estoque. Células mescladas não propagam valores automaticamente. Fórmula sem resultado salvo bloqueia a linha; valor salvo gera aviso de possível desatualização. Macros/fórmulas/referências externas não são executadas. .xls binário exige salvar como .xlsx. Limites: 10 MB, ZIP expandido 30 MB, 2.000 entradas ZIP, 10.000 linhas de dados/aba, 200 colunas e 200.000 células.
+Regras em BUSINESS_RULES; decisões em DECISIONS (ADR-014 a ADR-021); tabelas e APIs em BACKEND_SCHEMA; permissões em SECURITY.
 
 ## Banco configurado
 
-Estado após upgrade validado: SQLite 0004_imports, 5 perfis, 18 permissões e 1 usuário; identidade e hash preservados. Integridade ok e zero violações de FK. Tabelas comerciais/importação vazias.
-Backup consistente criado: data/backups/pre-imports-20261008-214138.db; integrity_check ok.
-Migrations 0003_masters e 0004_imports testadas em bancos temporários e APLICADAS ao banco local; Alembic check sem drift.
-Nenhum fixture comercial ou usuário de teste é inserido na base real. Não executar bootstrap: há conta existente.
+Conferido por leitura somente em 11/10/2026: SQLite `data/locacontrol.db` na revisão **0010_backups**, 5 perfis, **32 permissões**, 1 usuário preservado, 1 modelo de contrato provisório. Zero linhas em clientes, orçamentos, contratos, documentos fiscais, vínculos de portal, `import_batches` e `app_settings`.
 
-## Verificação desta execução
+Migrations 0005–0010 aplicadas em 11/10, com cópias prévias em `data/backups`: `pre-quotes-20261011-084445.db` (banco em 0004), `pre-contracts-20261011-090635.db` (em 0005) e `pre-upgrade-20261011-092925.db` (em 0006, criada pelo `launch.ps1`). Nenhum fixture ou usuário de teste na base real. Não executar bootstrap: há conta existente.
 
-- Backend completo: 66 passed.
-- Importador após nova conversão do original: 10 passed.
-- Frontend: 29 passed.
-- Check oficial: Ruff, formato, ESLint, Prettier e build PASSARAM.
-- E2E comercial/autenticação anterior: 8 cenários PASSARAM, quatro tamanhos.
-- Regressão visual: 16 cenários PASSARAM.
-- E2E incluindo upload: 12 cenários PASSARAM (4 identidade, 4 comerciais, 4 importação), sem violações Axe detectadas nos estados testados. Ajustes visuais finais verificados separadamente nos quatro tamanhos.
-- Smoke: PASSOU após build final, HTML/API/health/proxy em ambiente temporário.
-- Falhas corrigidas: TypeScript de tipos comerciais, teste antigo de API inexistente, fixture de limite de colunas e seletor E2E exato do CPF/CNPJ.
-- Uma rodada smoke coincidiu com limpeza de dist pelo build e recebeu 404; repetição após build PASSOU. Não executar smoke/E2E em paralelo com build.
+## Verificação observada em 2026-10-11
 
-Git: master sem commits, fontes untracked. Nenhum commit inventado ou criado nesta execução.
-Avisos não bloqueantes: depreciação Starlette/AnyIO e anotações de tree shaking do Zod.
+- `.\.venv\Scripts\python.exe -m pytest backend/tests -q -p no:cacheprovider`: **133 passed, 1 warning** no commit `d3916f3` (153 s). Execução anterior no mesmo dia, antes dos dois últimos commits: 132 passed.
+- `backend/tests/test_release_journey.py` (commit `892b6bd`, cenário oficial da versão 1.0 percorrido pela API): **1 passed** quando executado isoladamente. A suíte completa não foi reexecutada depois desse commit; o esperado, ainda não observado, é 134.
+- Aviso não bloqueante: depreciação Starlette/AnyIO.
+- Não reexecutados nesta atualização: Ruff, build do frontend, Vitest, E2E e smoke. O commit `2caa3e3` registra "Vitest 49, E2E real 20 cenários e visual 16 conforme relatório do subagente"; esse resultado não foi reproduzido aqui.
+- Os testes usam bancos e pastas temporários; não provam nada sobre dados reais.
 
-## Próximas etapas oficiais
+## Pendências externas (dependem do usuário ou de terceiros)
 
-| Etapa | Estado | Entrega |
-| --- | --- | --- |
-| 4 | PARCIAL | Homologar Excel real via upload e resolver dados pendentes sem perda |
-| 5 | NÃO INICIADA | Orçamentos, cálculos, snapshots, estados e PDF |
-| 6 | NÃO INICIADA | Contratos, numeração, templates e documentos históricos |
-| 7 | NÃO INICIADA | Retiradas, renovações, devoluções e estoque integrado |
-| 8 | NÃO INICIADA | Dashboard real, relatórios e exportações |
-| 9 | NÃO INICIADA | Portal com isolamento por cliente |
-| 10 | NÃO INICIADA | Faturamento e integração fiscal em sandbox |
-| 11 | NÃO INICIADA | Backup, restauração, logs, instalação e atualização |
-| 12 | NÃO INICIADA | QA, guias e release |
+| Pendência | Desbloqueia |
+| --- | --- |
+| Excel real enviado em Gestão → Importações | Homologação da etapa 4 e mapeamento do histórico de contratos |
+| Modelo real de contrato | Substituir o modelo provisório (etapa 6) |
+| Dados da locadora (`LOCACONTROL_COMPANY_*`) | Cabeçalho correto de orçamentos, contratos e relatórios (hoje "LocaControl") |
+| Regras fiscais com a contabilidade, provedor escolhido e credenciais de sandbox | Adapter fiscal real e homologação (etapa 10) |
+| Decisões de publicação P1–P4 (público, empresa única ou várias, infraestrutura, banco, domínio) | Qualquer acesso pela internet, inclusive uso remoto do portal |
 
-Dashboard, orçamentos e contratos ainda contêm prévias identificadas. Upload possui atalho inicial no dashboard para usuários autorizados. Guia em EXCEL_IMPORT.md. Continuidade em AI_HANDOFF.md e prompt em CONTINUE_PROMPT.md.
+## Decisões técnicas revisáveis em aberto
+
+Reserva de estoque na confirmação do contrato (não implementada); upload do documento assinado e DOCX (não existem); registro próprio de manutenção; aprovação da solicitação do portal apenas registra a decisão; fuso comercial fixo UTC−3.
 
 ## Publicação web
 
-Roteiro em PUBLICATION_ROADMAP.md. Arquitetura atual local/LAN, sem deploy público, multiempresa ou cobrança de assinatura. Definir infraestrutura, público, banco de produção, domínio/HTTPS, persistência, backup/restore, observabilidade e homologação antes de publicar.
+Nada foi publicado. Arquitetura atual local/LAN, sem deploy público, multiempresa ou cobrança de assinatura. Roteiro em PUBLICATION_ROADMAP.md.
 
+## Próximos passos
 
-## Documentação estruturante — 2026-10-11
-Criados PRD, TRD, APP_FLOW, DESIGN_BRIEF e BACKEND_SCHEMA. DEVELOPMENT_PLAN é o sexto documento (plano de implementação), complementado com tarefas rastreáveis e responsabilidades.
-CONTINUE_PROMPT agora referencia os seis, descreve especialistas e continuidade 4–12 quando acionado pelo usuário.
-Estado funcional acima permanece o checkpoint de 08/10; banco, testes e servidor não revalidados nesta sessão. Nenhuma etapa funcional iniciada.
+1. Validar as telas de contratos e operação.
+2. Construir as telas de dashboard real, relatórios, portal, fiscal e backups sobre as APIs existentes.
+3. Etapa 12: auditoria, E2E do fluxo integral e guias.
+
+Detalhe e comandos em AI_HANDOFF.md.
