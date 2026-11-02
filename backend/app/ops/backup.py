@@ -37,6 +37,14 @@ DATABASE_MEMBER = "locacontrol.db"
 MANIFEST = "manifest.json"
 
 
+def volume(path: Path):
+    """Device id of the nearest existing ancestor; data folders may not exist yet."""
+    for candidate in (Path(path), *Path(path).parents):
+        if candidate.exists():
+            return candidate.stat().st_dev
+    return None
+
+
 def sha256(stream) -> str:
     digest = hashlib.sha256()
     for chunk in iter(lambda: stream.read(1 << 20), b""):
@@ -283,6 +291,18 @@ class BackupManager:
                 "Atualize o LocaControl antes de restaurá-lo.",
             )
         self.database_path()  # SQLite only, checked before anything is touched
+        # shortcut: restore moves folders by rename, so it needs one volume; stage per volume to
+        # support a backup folder on another disk.
+        backups = volume(self.directory(config))
+        apart = [label for label, folder in self.folders().items() if volume(folder) != backups]
+        if apart:
+            raise HTTPException(
+                409,
+                "Restauração indisponível: a pasta de backups está em outro disco que os dados ("
+                + ", ".join(apart)
+                + "). Copie o arquivo de backup para uma pasta no mesmo disco dos dados, "
+                "configure-a como pasta de backups e restaure de lá. Nada foi alterado.",
+            )
         head = scripts.get_current_head()
         with OPERATION_LOCK:
             safety = self.create(config, "pre-restore")

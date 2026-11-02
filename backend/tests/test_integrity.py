@@ -445,3 +445,69 @@ def test_startup_after_abrupt_termination(tmp_path, commit):
         connection.close()
     assert rows == (400 if commit else 0)
     assert not journal.exists()
+
+
+def test_failure_in_migration_after_restore_is_undone(client, admin, base, monkeypatch):
+    person, item = base
+    document(client, admin, person, item)
+    created = backup(client, admin)
+    later = customer(client, admin, "11144477735")
+    document(client, admin, later, item)
+    settings = client.app.state.settings
+    files_before = tree(Path(settings.document_directory))
+    customers_before = client.get("/api/customers").json()
+    real = backup_module.BackupManager.migrations
+
+    class NewerHead:
+        """Pretends the installed code is newer, so restore must migrate the backup."""
+
+        def __init__(self, scripts):
+            self.scripts = scripts
+
+        def walk_revisions(self):
+            return self.scripts.walk_revisions()
+
+        def get_current_head(self):
+            return "9999_versao_mais_nova"
+
+    def failing_upgrade(*_args, **_kwargs):
+        raise RuntimeError("migration interrompida (simulado)")
+
+    monkeypatch.setattr(
+        backup_module.BackupManager, "migrations", lambda self: NewerHead(real(self))
+    )
+    monkeypatch.setattr(backup_module.command, "upgrade", failing_upgrade)
+    switch(client, admin)
+    response = restore(client, admin[1], created["name"])
+    monkeypatch.undo()
+    assert response.status_code == 500
+    assert "desfeita automaticamente" in response.json()["detail"]
+    database = manager(client).database_path()
+    connection = sqlite3.connect(database)
+    assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    connection.close()
+    assert client.get("/api/customers").json() == customers_before
+    assert tree(Path(settings.document_directory)) == files_before
+    directory = Path(settings.backup_directory)
+    assert not list(directory.glob("replaced_*")) and not list(directory.glob(".restore_*"))
+    assert client.get("/health").json()["status"] == "ok"
+
+
+def test_restore_refuses_backup_folder_on_another_disk_before_any_change(
+    client, admin, base, monkeypatch
+):
+    created = backup(client, admin)
+    customer(client, admin, "11144477735")
+    before = client.get("/api/customers").json()
+    backups = Path(client.app.state.settings.backup_directory)
+    monkeypatch.setattr(
+        backup_module, "volume", lambda path: "D:" if Path(path) == backups else "C:"
+    )
+    switch(client, admin)
+    response = restore(client, admin[1], created["name"])
+    monkeypatch.undo()
+    assert response.status_code == 409
+    assert "outro disco" in response.json()["detail"]
+    assert "Nada foi alterado" in response.json()["detail"]
+    assert not list(backups.glob("*_pre-restore.zip"))
+    assert client.get("/api/customers").json() == before
