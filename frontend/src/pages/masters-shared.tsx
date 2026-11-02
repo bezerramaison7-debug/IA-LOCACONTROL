@@ -82,28 +82,30 @@ export function Pager({
   total,
   offset,
   onChange,
+  size = 20,
 }: {
   total: number
   offset: number
   onChange: (offset: number) => void
+  size?: number
 }) {
   return (
     <div className="table-footer">
       <span>
-        {total} registros · página {Math.floor(offset / 20) + 1}
+        {total} registros · página {Math.floor(offset / size) + 1}
       </span>
       <div className="pagination">
         <Button
           variant="secondary"
           disabled={offset === 0}
-          onClick={() => onChange(Math.max(0, offset - 20))}
+          onClick={() => onChange(Math.max(0, offset - size))}
         >
           Anterior
         </Button>
         <Button
           variant="secondary"
-          disabled={offset + 20 >= total}
-          onClick={() => onChange(offset + 20)}
+          disabled={offset + size >= total}
+          onClick={() => onChange(offset + size)}
         >
           Próxima
         </Button>

@@ -87,8 +87,8 @@ export function Roles() {
         description="Controle quais ações cada perfil pode executar. A API verifica todas as permissões."
       />
       <p className="security-note">
-        Administrador mantém acesso completo. Cliente tem acesso apenas à própria conta nesta etapa.
-        Permissões comerciais serão acrescentadas junto aos módulos correspondentes.
+        Administrador mantém acesso completo. Cliente acessa somente o portal, com os dados do
+        cliente ao qual a conta foi vinculada. Os dois perfis têm permissões fixas.
       </p>
       {query.isPending ? (
         <Skeleton />

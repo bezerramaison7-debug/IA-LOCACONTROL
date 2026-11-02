@@ -4,6 +4,8 @@ Implementação da Etapa 2. O resultado da validação e o estado das migrations
 
 ## Primeiro administrador
 
+Desde 11/10/2026 (ADR-022) o atalho de início cria, em banco sem nenhum usuário, a conta `admin` com senha `admin` e troca obrigatória: até a troca por uma senha de 12+ caracteres a API responde 403 a qualquer função. A conta nunca é recriada. É uma credencial pública por definição: aceitável apenas na instalação local de máquina única, e a senha deve ser trocada logo após instalar. Em instalação acessível por rede, use o bootstrap interativo abaixo antes do primeiro início.
+
 Na raiz do projeto, após as migrations, execute em um terminal PowerShell interativo:
 
 ```powershell
@@ -53,7 +55,7 @@ Respostas /api têm Cache-Control: no-store. Cabeçalhos X-Content-Type-Options,
 | Alterar permissões internas (roles.write) | Sim | Não | Não |
 | Consultar auditoria (audit.read) | Sim | Não | Não |
 
-Administrador e Cliente têm grants protegidos. Cliente não pode ser combinado com um perfil interno; nesta etapa acessa somente sua conta e aparência, pois ainda não existe portal comercial. Os perfis internos podem receber permissões administrativas por decisão explícita de quem tem roles.write. Conceder users.write permite atribuir perfis e redefinir senhas; trata-se de uma permissão administrativa ampla. As restrições sempre são verificadas no backend, inclusive por chamada HTTP direta.
+Administrador e Cliente têm grants protegidos. Cliente não pode ser combinado com um perfil interno; na Etapa 2 acessava somente sua conta e aparência. Desde a Etapa 9 a API do portal existe (seção "Etapas 6 a 11"); a tela do portal ainda não. Os perfis internos podem receber permissões administrativas por decisão explícita de quem tem roles.write. Conceder users.write permite atribuir perfis e redefinir senhas; trata-se de uma permissão administrativa ampla. As restrições sempre são verificadas no backend, inclusive por chamada HTTP direta.
 
 As permissões de clientes, contratos, estoque e financeiro serão criadas com os módulos correspondentes. workspace.view dá acesso apenas às prévias visuais identificadas, sem conceder operações comerciais ainda inexistentes. A UI de usuários atribui um perfil por edição; a API aceita múltiplos perfis internos e valida combinações. Manter pelo menos um usuário ativo com perfil ADMINISTRADOR.
 
@@ -87,7 +89,68 @@ AuditLogs guardam identificador, instante UTC em segundos, autor/identificação
 Testes backend verificam sessão, expiração, revogação, senhas, CSRF/origens, perfis, bootstrap/recuperação, último administrador, concorrência e rollback. Testes frontend verificam login, erros, sessão, isolamento visual de Cliente, troca obrigatória e navegação. scripts/e2e-auth.py aplica migrations em SQLite temporário, cria um administrador exclusivamente de teste e exercita a aplicação compilada via Chromium/API real. Não usa o banco local. Regressão visual anterior está em frontend/e2e/visual.spec.ts com identidade simulada, separada desse teste real.
 
 
+## Etapas 6 a 11 — permissões, portal, downloads e restauração (2026-10-11)
+
+Conferido nas migrations 0006–0010 e no banco local. Total de permissões: 32.
+
+| Permissão | ADMINISTRADOR | COMERCIAL | OPERAÇÃO | FINANCEIRO | CLIENTE |
+| --- | --- | --- | --- | --- | --- |
+| contracts.read (contratos, documentos, dashboard, resumo do cliente, lista de solicitações) | Sim | Sim | Sim | Sim | Não |
+| contracts.write (criar, confirmar, cancelar, encerrar, renovar, gerar/assinar documento, decidir solicitação) | Sim | Sim | Não | Não | Não |
+| contracts.negotiate (preço diferente da tabela em contrato/renovação) | Sim | Não | Não | Não | Não |
+| contracts.configure (numeração e modelos) | Sim | Não | Não | Não | Não |
+| operations.write (retiradas e devoluções) | Sim | Não | Sim | Não | Não |
+| reports.read (relatórios e exportações) | Sim | Sim | Não | Sim | Não |
+| fiscal.read / fiscal.write | Sim | Não | Não | Sim | Não |
+| backups.manage | Sim | Não | Não | Não | Não |
+| portal.access | Não | Não | Não | Não | Sim |
+
+Estas são as concessões iniciais das migrations; quem tem roles.write pode alterá-las nos perfis internos. O perfil COMERCIAL não registra retirada nem devolução; o perfil OPERAÇÃO não renova nem cancela. As restrições são verificadas na API e testadas por perfil (`test_contracts.py`, `test_reports.py`, `test_fiscal.py`, `test_backups.py`).
+
+### Isolamento do portal
+
+- `portal.access` existe só no perfil CLIENTE, que não se combina com perfil interno. A conta precisa estar vinculada a um cliente (`PUT /api/users/{id}/customer`, users.write); sem vínculo, o portal responde 403 com orientação.
+- Toda rota `/api/portal/*` filtra pelo cliente do vínculo, inclusive detalhes por ID e downloads. Contrato, documento, orçamento ou solicitação de outro cliente responde **404**, nunca 403, para não confirmar que o identificador existe.
+- Também respondem 404 no portal: contrato em rascunho, documento substituído e orçamento em rascunho ou cancelado.
+- Alterar ou remover o vínculo **revoga todas as sessões** da conta, para que uma sessão antiga nunca alcance outro cliente. A mudança é auditada (`portal.link_changed`).
+- O portal expõe um subconjunto de campos: sem preço de tabela, autores internos ou auditoria.
+- Cobertura: `test_portal.py` (lista, detalhe, download, solicitação, vínculo e revogação).
+
+### Downloads
+
+Todo arquivo é entregue por rota autenticada e autorizada, como anexo, sem caminho do servidor: PDF de orçamento (quotes.read), prévia e documento de contrato (contracts.read), exportação de relatório (reports.read), PDF/XML fiscal (fiscal.read), conjunto de backup (backups.manage) e as versões do portal (portal.access + vínculo). Arquivos no disco usam nome UUID gerado pelo servidor. O download do documento de contrato confere o SHA-256 e é recusado se o arquivo foi alterado fora do sistema. O nome de backup aceito segue um padrão fixo sem separadores de caminho; a restauração recusa membros do zip que apontem para fora das pastas de destino.
+
+### Backup e restauração
+
+- Tudo sob backups.manage (somente administrador de início). O conjunto contém todos os dados da empresa e os hashes de senha do banco: tratar o `.zip` como confidencial e guardá-lo em local protegido.
+- Restaurar exige, no mesmo pedido, a frase exata `RESTAURAR <nome do backup>` e a **senha do próprio usuário**. Senha incorreta responde 403, não restaura e é auditada (`backup.restore_denied`).
+- Antes de substituir qualquer coisa o sistema verifica manifesto, hashes e integridade do banco, recusa conjunto de versão desconhecida ou mais nova, cria uma cópia `_pre-restore` do estado atual e move as pastas de arquivos atuais para `replaced_<data>` em vez de apagá-las.
+- Depois da restauração, sessões e contas voltam ao estado do backup: é preciso entrar novamente. O evento `backup.restored` é gravado com o rótulo do usuário que restaurou.
+- Configuração e execução manual são auditadas (`backup.configured`, `backup.requested`).
+
+### Fiscal
+
+Não há credencial fiscal em parte alguma: só existe o provedor de simulação. O retorno bruto do provedor é guardado para conciliação; um adapter real deverá remover credenciais antes de devolvê-lo (contrato descrito em `app/fiscal/provider.py`). Credenciais futuras ficam somente em `.env`.
+
+### Garantias acrescentadas pelas correções da auditoria (commit `b0d9ec4`)
+
+Conferidas no código e cobertas por testes nos módulos indicados. A auditoria independente foi somente leitura e cobriu o backend; **não cobriu o frontend, a importação de Excel nem as rotas de identidade**.
+
+- Portal não expõe motivo interno: os eventos de cancelamento e de encerramento aparecem para o cliente com texto fixo ("Contrato cancelado.", "Contrato encerrado."), nunca com o motivo escrito pela locadora (`app/portal/service.py`, `test_portal.py`).
+- Reenvio com a mesma chave de operação só é tratado como repetição se autor, contrato, data e itens (ou, no fiscal, cliente, contrato, período, valor e descrição) forem os mesmos; com conteúdo diferente responde **409**, sem gravar nada (`app/contracts/operations.py`, `app/fiscal/service.py`).
+- Verificação de backup exige manifesto completo: o banco precisa estar listado, nenhum arquivo do `.zip` pode estar fora do manifesto, todos os hashes precisam conferir e o banco precisa ter ao menos um usuário. Conjunto reprovado não é restaurado (`app/ops/backup.py`, `test_backups.py`).
+- Restauração serializada: backup e restauração usam a mesma trava de processo; os arquivos são extraídos e conferidos antes de qualquer dado vigente ser tocado, e, se a restauração falhar, a resposta informa a cópia de segurança criada.
+- Documento fiscal só é enviado, consultado ou cancelado no provedor e no ambiente em que foi criado; configuração diferente responde 409.
+- Renovação recusa a mesma unidade física informada mais de uma vez (achado de severidade alta).
+- Exportação em Excel grava como texto qualquer valor iniciado por "=", sem criar fórmula.
+
+### Limites conhecidos
+
+Sem HTTPS configurado, sem antimalware nos uploads, sem imutabilidade da auditoria contra quem acessa o arquivo SQLite, sem criptografia dos conjuntos de backup e sem isolamento multiempresa. Nada foi publicado na internet.
+
 ## Módulos comerciais e upload — 2026-10-08
+
+Etapa 5 adiciona quotes.read, quotes.write, quotes.approve e quotes.negotiate. Alterar o preço de tabela em um orçamento exige quotes.negotiate, verificada no serviço; quem não a possui pode manter um preço já negociado, mas não alterá-lo. O PDF do orçamento exige sessão e quotes.read. Total de permissões após a Etapa 5: 22 (32 após a Etapa 11, ver seção anterior).
 
 Etapa 3 adiciona dez permissões de leitura/escrita. Etapa 4 adiciona imports.read/write, inicialmente para administrador; conversão também exige escrita no módulo de destino. Não conceder imports.read indiscriminadamente: original/relatórios contêm dados da empresa.
 

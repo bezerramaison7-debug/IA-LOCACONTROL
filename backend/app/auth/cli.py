@@ -46,10 +46,26 @@ def run_local(action: str, username: str, name: str, password: str, settings: Se
         engine.dispose()
 
 
+def create_default(settings: Settings) -> bool:
+    """Non-interactive first-run account; does nothing when any user already exists."""
+    engine = build_engine(settings.database_url)
+    try:
+        with Session(engine) as db:
+            db.execute(text("BEGIN IMMEDIATE"))
+            created = IdentityService(db, local=True).bootstrap_default() is not None
+            db.commit()
+            return created
+    finally:
+        engine.dispose()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Administração local segura do LocaControl")
-    parser.add_argument("action", choices=["bootstrap", "recover"])
+    parser.add_argument("action", choices=["bootstrap", "recover", "default"])
     args = parser.parse_args()
+    if args.action == "default":
+        print("CREATED" if create_default(Settings()) else "EXISTS")
+        return
     if not sys.stdin.isatty():
         parser.exit(2, "Execute em terminal interativo. Senhas não são aceitas por pipe.\n")
     try:

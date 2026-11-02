@@ -37,7 +37,16 @@ def migrated_config(migration_config):
 
 
 @pytest.fixture
-def client(migrated_config):
-    settings = Settings(_env_file=None, database_url=migrated_config.attributes["database_url"])
+def client(migrated_config, tmp_path):
+    settings = Settings(
+        _env_file=None,
+        database_url=migrated_config.attributes["database_url"],
+        # Generated documents must never land in the real data directory.
+        document_directory=tmp_path / "documents",
+        fiscal_directory=tmp_path / "fiscal",
+        import_directory=tmp_path / "imports",
+        backup_directory=tmp_path / "backups",
+        backup_scheduler=False,
+    )
     with TestClient(create_app(settings)) as client:
         yield client

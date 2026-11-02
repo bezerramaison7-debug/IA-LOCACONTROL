@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LocaControl — Guia visual narrado</title>
+<style>
+  :root { --bg:#f6f8fb; --surface:#fff; --text:#172033; --muted:#5b6577; --line:#d5dbe5;
+          --primary:#2563eb; --primary-text:#fff; --band:#eef2f9; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0b1120; --surface:#111827; --text:#e5e7eb; --muted:#9aa4b5; --line:#263247;
+            --primary:#60a5fa; --primary-text:#0b1120; --band:#172033; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:16px/1.5 Inter, system-ui, "Segoe UI", sans-serif; }
+  header { padding:20px 16px 8px; max-width:1200px; margin:0 auto; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  header p { margin:0; color:var(--muted); }
+  main { max-width:1200px; margin:0 auto; padding:8px 16px 40px; display:grid; gap:16px;
+         grid-template-columns:minmax(0,1fr) 300px; }
+  @media (max-width: 900px) { main { grid-template-columns:minmax(0,1fr); } nav { order:2; } }
+  .stage, nav { background:var(--surface); border:1px solid var(--line); border-radius:12px; }
+  .stage { padding:16px; min-width:0; }
+  .kicker { color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.04em; }
+  h2 { margin:2px 0 12px; font-size:1.25rem; }
+  .shot { width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:8px;
+          background:var(--band); }
+  .text { margin:14px 0 8px; }
+  .tips { margin:0; padding-left:20px; color:var(--muted); }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:14px; }
+  button { font:inherit; padding:9px 14px; border-radius:8px; border:1px solid var(--line);
+           background:var(--surface); color:var(--text); cursor:pointer; min-height:44px; }
+  button.primary { background:var(--primary); color:var(--primary-text); border-color:var(--primary);
+                   font-weight:600; }
+  button:disabled { opacity:.5; cursor:default; }
+  button:focus-visible, nav button:focus-visible { outline:3px solid var(--primary); outline-offset:2px; }
+  .progress { flex:1 1 160px; height:6px; background:var(--band); border-radius:3px; overflow:hidden; }
+  .progress span { display:block; height:100%; width:0; background:var(--primary); }
+  .count { color:var(--muted); font-variant-numeric:tabular-nums; }
+  nav { padding:8px; max-height:80vh; overflow:auto; align-self:start; }
+  nav h3 { font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted);
+           margin:12px 8px 4px; }
+  nav button { display:block; width:100%; text-align:left; border:0; background:none; padding:8px;
+               min-height:40px; border-radius:6px; }
+  nav button[aria-current="true"] { background:var(--band); font-weight:600; }
+  .note { color:var(--muted); font-size:.9rem; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LocaControl — Guia visual narrado</h1>
+  <p>Percurso pelas telas do sistema, com narração. As imagens usam dados de exemplo.</p>
+</header>
+<main>
+  <section class="stage" aria-live="polite">
+    <div class="kicker" id="kicker"></div>
+    <h2 id="title"></h2>
+    <img class="shot" id="shot" alt="">
+    <p class="text" id="text"></p>
+    <ul class="tips" id="tips"></ul>
+    <div class="controls">
+      <button id="prev">Anterior</button>
+      <button id="play" class="primary">Reproduzir com narração</button>
+      <button id="next">Próximo</button>
+      <div class="progress" aria-hidden="true"><span id="bar"></span></div>
+      <span class="count" id="count"></span>
+    </div>
+    <p class="note">Reproduzir avança sozinho ao fim de cada narração, como um vídeo. Use as setas do
+      teclado para mudar de passo e a barra de espaço para pausar.</p>
+    <audio id="audio" preload="auto"></audio>
+  </section>
+  <nav aria-label="Passos do guia" id="menu"></nav>
+</main>
+<script>
+const steps = [{"id": "01-login", "section": "Começando", "title": "Entrar no sistema", "text": "Bem-vindo ao LocaControl. Para abrir o sistema, dê dois cliques em Iniciar LocaControl. O navegador abre nesta tela de acesso. No primeiro uso, entre com o usuário admin e a senha admin. O sistema vai pedir uma senha nova, com pelo menos doze caracteres, antes de liberar as telas.", "tips": ["Atalho: Iniciar LocaControl.cmd", "Primeiro acesso: admin / admin", "A troca de senha é obrigatória"]}, {"id": "02-dashboard", "section": "Começando", "title": "Visão geral", "text": "Esta é a visão geral. Os cartões mostram quantos contratos estão ativos, quantos aguardam retirada, os que estão vencendo e os vencidos, os itens locados e os equipamentos disponíveis ou em manutenção. O valor contratado é a soma dos contratos ativos. Ele não representa dinheiro recebido. O menu à esquerda dá acesso a todas as áreas.", "tips": ["Valor contratado não é valor recebido", "Vencendo: devolução em até 3 dias", "Menu lateral com todas as áreas"]}, {"id": "03-clientes", "section": "Preparar a operação", "title": "Clientes", "text": "Comece pelos cadastros. Em Comercial, Clientes, cadastre pessoas físicas e jurídicas com documento, contato e endereço. O sistema não aceita dois clientes com o mesmo CPF ou CNPJ. O botão Contratos e documentos mostra o histórico de cada cliente.", "tips": ["CPF ou CNPJ não se repete", "Desativar preserva o histórico", "Resumo: contratos e documentos do cliente"]}, {"id": "04-produtos", "section": "Preparar a operação", "title": "Produtos e equipamentos", "text": "Em Operação, Produtos, cadastre o que a locadora aluga. Há dois tipos de controle. Por quantidade, como andaimes, em que basta saber quantos existem. E por unidade física, como uma betoneira, em que cada equipamento tem código próprio e é cadastrado na tela Equipamentos.", "tips": ["Por quantidade: andaimes, escoras", "Por unidade: cada equipamento tem código", "Unidades ficam em Equipamentos"]}, {"id": "05-estoque", "section": "Preparar a operação", "title": "Estoque", "text": "A tela de Estoque mostra o saldo de cada produto por situação: disponível, reservado, locado, manutenção, indisponível e baixado. Use Movimentar para dar entrada no estoque inicial. Depois, as retiradas e devoluções dos contratos atualizam esses saldos sozinhas. O estoque nunca fica negativo.", "tips": ["Entrada inicial pelo botão de movimento", "Contratos atualizam o saldo automaticamente", "O que está com cliente só volta pela devolução"]}, {"id": "06-precos", "section": "Preparar a operação", "title": "Preços", "text": "Em Preços, defina o valor de cada produto por período: diária, semanal, quinzenal e mensal, com a data de início de vigência. Ao reajustar, o preço antigo fica guardado no histórico. Orçamentos e contratos já feitos não mudam quando a tabela muda.", "tips": ["Diária, semanal, quinzenal e mensal", "Reajuste preserva o histórico", "Documentos antigos não são recalculados"]}, {"id": "07-orcamentos", "section": "Orçamento", "title": "Lista de orçamentos", "text": "Com os cadastros prontos, vamos ao orçamento. A lista mostra número, cliente, validade, total e situação. Você pode buscar pelo nome do cliente, pelo documento ou pelo número do orçamento, e filtrar pela situação.", "tips": ["Número no formato ORC-ano-sequência", "Busca por cliente, documento ou número", "Situação sempre com texto e ícone"]}, {"id": "08-orcamento-novo", "section": "Orçamento", "title": "Criar um orçamento", "text": "Para criar, escolha o cliente, a data de início e a validade. Em cada item, selecione o produto, a quantidade, o período e o número de períodos. O preço de tabela é preenchido automaticamente e a tela mostra quanto há disponível. O valor do item é a quantidade, vezes o preço do período, vezes o número de períodos. O orçamento não reserva estoque.", "tips": ["Valor = quantidade × preço × nº de períodos", "Preço negociado exige permissão", "Orçamento não reserva estoque"]}, {"id": "09-orcamento-detalhe", "section": "Orçamento", "title": "Enviar, aprovar e converter", "text": "No detalhe do orçamento ficam as ações. Enviar marca que o cliente recebeu a proposta. Aprovar registra o aceite. Rejeitar e cancelar pedem o motivo. Você pode baixar o PDF, duplicar o orçamento e, depois de aprovado, usar Converter em contrato. Os preços do orçamento aprovado seguem para o contrato sem alteração.", "tips": ["Enviar → Aprovar → Converter em contrato", "Rejeitar e cancelar pedem motivo", "PDF e duplicação a qualquer momento"]}, {"id": "10-contratos", "section": "Contrato", "title": "Lista de contratos", "text": "Em Contratos estão todas as locações. A busca aceita número, cliente e documento. Os filtros avançados localizam por produto, equipamento, período e datas. Cada contrato recebe um número, e as renovações usam o mesmo número com um sufixo: nove mil cento e noventa e três, ponto um, ponto dois, e assim por diante.", "tips": ["Renovações: 9193.1, 9193.2", "Filtros por produto, equipamento e datas", "Vencendo e vencido calculados pela data"]}, {"id": "11-contrato-detalhe", "section": "Contrato", "title": "O contrato por dentro", "text": "O detalhe reúne resumo, cliente, itens, datas, valores, documentos e histórico. Em cada item você vê o que foi retirado, o que está com o cliente, o que foi devolvido e o que foi renovado. Em Documentos, gere o PDF do contrato e marque como assinado a via que o cliente assinou. Um documento assinado nunca é substituído.", "tips": ["Confirmar libera a retirada", "Gerar documento em PDF", "Assinado nunca é substituído"]}, {"id": "12-retirada", "section": "Operação", "title": "Registrar a retirada", "text": "Quando o cliente vem buscar, abra o contrato e escolha Registrar retirada. Informe a quantidade de cada item. Para produtos controlados por unidade, marque qual equipamento está saindo. Ao confirmar, o estoque passa de disponível para locado e o contrato fica ativo. A retirada pode ser parcial.", "tips": ["Disponível → Locado", "Escolha a unidade física quando houver", "Retirada pode ser parcial"]}, {"id": "13-renovacao", "section": "Operação", "title": "Renovar", "text": "Para renovar, escolha os itens que continuam com o cliente, o novo período e a opção de preço: manter os preços anteriores, usar a tabela atual, ou negociar novos valores. A escolha fica registrada. O sistema cria o próximo número, e o contrato anterior é preservado. Renovar não mexe no estoque, porque o equipamento continua com o cliente.", "tips": ["Preços: anteriores, atuais ou negociados", "Pode renovar só parte dos itens", "O contrato anterior é preservado"]}, {"id": "14-devolucao", "section": "Operação", "title": "Registrar a devolução", "text": "Na devolução, informe o que voltou e em que condição. Item em bom estado volta para disponível. Item avariado vai para manutenção. A devolução pode ser parcial: o que não voltou continua pendente no contrato. Quando tudo é devolvido, o contrato é encerrado automaticamente.", "tips": ["Bom → Disponível; Avariado → Manutenção", "Parcial mantém o saldo pendente", "Tudo devolvido encerra o contrato"]}, {"id": "15-renovacoes", "section": "Operação", "title": "Renovações e pedidos dos clientes", "text": "A tela Renovações lista as renovações feitas e os pedidos enviados pelos clientes pelo portal. Aprovar um pedido apenas registra a decisão. A renovação em si é feita pelo funcionário, pelo botão Renovar contrato.", "tips": ["Pedido do cliente precisa de decisão", "Aprovar não cria a renovação", "Recusar pede o motivo"]}, {"id": "16-manutencao", "section": "Operação", "title": "Manutenção", "text": "Em Manutenção aparecem os equipamentos e as quantidades que voltaram avariados. Depois do reparo, use Liberar para devolver o item ao estoque disponível.", "tips": ["Recebe os itens avariados", "Liberar devolve ao disponível"]}, {"id": "17-relatorios", "section": "Gestão", "title": "Relatórios", "text": "Em Relatórios há doze consultas prontas: locações ativas, contratos vencendo e vencidos, produtos locados e disponíveis, equipamentos por cliente, histórico de equipamento, renovações, devoluções, receita contratada por período, produtos mais locados e clientes com maior volume. Todas podem ser exportadas para Excel ou PDF.", "tips": ["12 relatórios com filtros", "Exportação em Excel e PDF", "Receita contratada não é recebimento"]}, {"id": "18-fiscal", "section": "Gestão", "title": "Faturamento e fiscal", "text": "A tela de faturamento e fiscal funciona, nesta versão, apenas em modo de simulação. Os documentos saem marcados como simulação, sem valor fiscal, e nada é transmitido. A emissão real depende das regras definidas com a contabilidade e da contratação de um provedor.", "tips": ["SIMULAÇÃO: sem valor fiscal", "Nada é transmitido", "Emissão real segue fora do sistema"]}, {"id": "19-backups", "section": "Gestão", "title": "Backups", "text": "Em Gestão, Backups, o administrador ativa o backup automático diário, escolhe o horário e quantas cópias manter. Fazer backup agora cria uma cópia na hora. Cada backup guarda o banco, as planilhas importadas e os contratos em PDF. Baixe cópias com frequência e guarde fora deste computador. Para restaurar, o sistema pede uma frase de confirmação e a sua senha, e antes faz uma cópia de segurança do estado atual.", "tips": ["Ative o backup automático", "Guarde cópias fora do computador", "Restaurar exige frase e senha"]}, {"id": "20-usuarios", "section": "Gestão", "title": "Usuários e perfis", "text": "Em Usuários, o administrador cria as contas da equipe e escolhe o perfil: administrador, comercial, operação, financeiro ou cliente. Cada perfil vê apenas o que precisa. A senha criada é provisória, e o sistema obriga a troca no primeiro acesso. Para dar acesso ao portal, crie uma conta com perfil Cliente e use Vincular cliente.", "tips": ["Perfis: Administrador, Comercial, Operação, Financeiro, Cliente", "Senha provisória com troca obrigatória", "Vincular cliente libera o portal"]}, {"id": "21-configuracoes", "section": "Gestão", "title": "Configurações", "text": "Em Configurações, o administrador define o próximo número de contrato, para continuar a sequência que a locadora já usava, e publica o modelo de contrato. O sistema vem com um modelo provisório, identificado no documento. Publique o texto da sua locadora antes de usar com clientes.", "tips": ["Próximo número de contrato", "Modelo de contrato da locadora", "Tema claro ou escuro"]}, {"id": "22-portal", "section": "Portal do cliente", "title": "Portal do cliente", "text": "O cliente com acesso ao portal vê apenas os próprios contratos, equipamentos, orçamentos e documentos. Ele pode baixar o contrato e pedir uma renovação, que fica aguardando a decisão da locadora. Nesta versão o portal funciona no computador e na rede local da locadora.", "tips": ["Cada cliente vê só os próprios dados", "Pedido de renovação aguarda aprovação", "Funciona na rede local"]}, {"id": "23-portal-contrato", "section": "Portal do cliente", "title": "Contrato visto pelo cliente", "text": "No detalhe, o cliente acompanha os itens, as datas de devolução e o histórico da locação, e baixa os documentos. Com isso concluímos o percurso: cadastro, orçamento, contrato, retirada, renovação e devolução. Para mais detalhes, consulte o guia do usuário. Bom trabalho.", "tips": ["Itens, datas e documentos", "Histórico da locação", "Mais detalhes no guia do usuário"]}];
+const $ = (id) => document.getElementById(id);
+const audio = $('audio');
+let index = 0, playing = false;
+
+function show(i, autoplay) {
+  index = Math.max(0, Math.min(steps.length - 1, i));
+  const step = steps[index];
+  $('kicker').textContent = step.section + ' · passo ' + (index + 1) + ' de ' + steps.length;
+  $('title').textContent = step.title;
+  $('shot').src = 'img/' + step.id + '.png';
+  $('shot').alt = 'Tela do LocaControl: ' + step.title;
+  $('text').textContent = step.text;
+  $('tips').replaceChildren(...step.tips.map((tip) => {
+    const item = document.createElement('li'); item.textContent = tip; return item;
+  }));
+  $('count').textContent = (index + 1) + ' / ' + steps.length;
+  $('prev').disabled = index === 0;
+  $('next').disabled = index === steps.length - 1;
+  document.querySelectorAll('#menu button').forEach((button, n) => {
+    button.setAttribute('aria-current', n === index ? 'true' : 'false');
+  });
+  audio.src = 'audio/' + step.id + '.wav';
+  $('bar').style.width = '0';
+  if (autoplay) audio.play().catch(() => setPlaying(false));
+}
+
+function setPlaying(value) {
+  playing = value;
+  $('play').textContent = playing ? 'Pausar' : 'Reproduzir com narração';
+  if (playing) audio.play().catch(() => setPlaying(false)); else audio.pause();
+}
+
+audio.addEventListener('timeupdate', () => {
+  if (audio.duration) $('bar').style.width = (100 * audio.currentTime / audio.duration) + '%';
+});
+audio.addEventListener('ended', () => {
+  if (!playing) return;
+  if (index < steps.length - 1) setTimeout(() => show(index + 1, true), 700);
+  else setPlaying(false);
+});
+$('play').addEventListener('click', () => setPlaying(!playing));
+$('prev').addEventListener('click', () => show(index - 1, playing));
+$('next').addEventListener('click', () => show(index + 1, playing));
+document.addEventListener('keydown', (event) => {
+  if (event.target.closest('nav')) return;
+  if (event.key === 'ArrowRight') show(index + 1, playing);
+  if (event.key === 'ArrowLeft') show(index - 1, playing);
+  if (event.key === ' ' && event.target.tagName !== 'BUTTON') { event.preventDefault(); setPlaying(!playing); }
+});
+
+let section = '';
+steps.forEach((step, n) => {
+  if (step.section !== section) {
+    section = step.section;
+    const heading = document.createElement('h3'); heading.textContent = section; $('menu').append(heading);
+  }
+  const button = document.createElement('button');
+  button.textContent = (n + 1) + '. ' + step.title;
+  button.addEventListener('click', () => show(n, playing));
+  $('menu').append(button);
+});
+show(0, false);
+</script>
+</body>
+</html>

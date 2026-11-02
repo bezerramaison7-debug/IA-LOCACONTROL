@@ -18,6 +18,7 @@ import { Modal, ConfirmDialog } from '../components/Modal'
 import { Card, EmptyState, ErrorState, Field, PageHeader, Select, Skeleton } from '../components/ui'
 import { useToast } from '../components/toast-context'
 import { Failure, MasterTable, Pager, ProductPicker } from './masters-shared'
+import { CustomerSummary } from './customer-summary'
 
 type Spec = {
   key: string
@@ -297,9 +298,11 @@ export function Masters({ kind }: { kind: MasterKind }) {
   const [editor, setEditor] = useState<MasterRow | 'new' | null>(null)
   const [detail, setDetail] = useState<MasterRow | null>(null)
   const [status, setStatus] = useState<MasterRow | null>(null)
+  const [summary, setSummary] = useState<MasterRow | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const canWrite = user?.permissions.includes(kind + '.write')
+  const canSummarize = kind === 'customers' && user?.permissions.includes('contracts.read')
   const canMove = user?.permissions.includes('stock.write')
   const productFilter =
     kind === 'equipment' && params.get('product')
@@ -439,6 +442,15 @@ export function Masters({ kind }: { kind: MasterKind }) {
                         >
                           Detalhes
                         </Button>
+                        {canSummarize && (
+                          <Button
+                            variant="ghost"
+                            onClick={() => setSummary(row)}
+                            aria-label={'Contratos e documentos de ' + label(row)}
+                          >
+                            Contratos e documentos
+                          </Button>
+                        )}
                         {canWrite && (
                           <Button
                             variant="ghost"
@@ -549,6 +561,19 @@ export function Masters({ kind }: { kind: MasterKind }) {
               Atualizado em {new Date(Number(detail.updated_at) * 1000).toLocaleString('pt-BR')}
             </p>
           </>
+        )}
+      </Modal>
+      <Modal
+        open={summary !== null}
+        onOpenChange={(open) => {
+          if (!open) setSummary(null)
+        }}
+        title="Contratos e documentos do cliente"
+        description={summary ? label(summary) : ''}
+        className="master-modal"
+      >
+        {summary && (
+          <CustomerSummary key={summary.id} customerId={summary.id} name={label(summary)} />
         )}
       </Modal>
       <Modal

@@ -7,6 +7,7 @@ import { Button } from '../components/Button'
 import { Modal, ConfirmDialog } from '../components/Modal'
 import { Card, EmptyState, ErrorState, Field, PageHeader, Select, Skeleton } from '../components/ui'
 import { useToast } from '../components/toast-context'
+import { CustomerLinkForm } from './users-link'
 
 const roleOptions = ['ADMINISTRADOR', 'COMERCIAL', 'OPERACAO', 'FINANCEIRO', 'CLIENTE']
 type Values = { username: string; name: string; password: string; role: string }
@@ -161,6 +162,7 @@ export function Users() {
   const [offset, setOffset] = useState(0)
   const [editor, setEditor] = useState<AuthUser | 'new' | null>(null)
   const [reset, setReset] = useState<AuthUser | null>(null)
+  const [linking, setLinking] = useState<AuthUser | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const canWrite = user?.permissions.includes('users.write')
@@ -175,6 +177,7 @@ export function Users() {
   const done = async (message: string) => {
     setEditor(null)
     setReset(null)
+    setLinking(null)
     toast(message)
     await cache.invalidateQueries({ queryKey: ['users'] })
     await refresh()
@@ -238,6 +241,15 @@ export function Users() {
                       </td>
                       <td>
                         <div className="row-actions">
+                          {account.role_codes.join() === 'CLIENTE' && (
+                            <Button
+                              variant="ghost"
+                              onClick={() => setLinking(account)}
+                              aria-label={`Vincular cliente a ${account.username}`}
+                            >
+                              Vincular cliente
+                            </Button>
+                          )}
                           {canWrite ? (
                             <>
                               <Button
@@ -328,6 +340,24 @@ export function Users() {
             key={editor === 'new' ? 'new' : editor.id}
             account={editor === 'new' ? undefined : editor}
             onDone={() => void done('Usuário salvo.')}
+          />
+        )}
+      </Modal>
+      <Modal
+        open={linking !== null}
+        onOpenChange={(open) => {
+          if (!open) setLinking(null)
+        }}
+        title="Vincular cliente"
+        description={`Define de qual cliente ${linking?.username || ''} vê os dados no portal.`}
+        className="master-modal"
+      >
+        {linking && (
+          <CustomerLinkForm
+            key={linking.id}
+            account={linking}
+            canWrite={!!canWrite}
+            onDone={(message) => void done(message)}
           />
         )}
       </Modal>

@@ -1,13 +1,55 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { adminSession } from '../src/test/auth-fixture'
+import { adminSession, dashboard } from '../src/test/auth-fixture'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (route) => route.fulfill({ json: adminSession }))
-  for (const module of ['customers', 'products', 'equipment'])
+  for (const module of ['customers', 'products', 'equipment', 'quotes', 'contracts'])
     await page.route('**/api/' + module + '**', (route) =>
       route.fulfill({ json: { items: [], total: 0 } }),
     )
+  // Later routes win: the contract settings shown in Configurações have their own shapes.
+  await page.route('**/api/contracts/numbering', (route) =>
+    route.fulfill({ json: { configured: null, highest_used: null, next_number: 1 } }),
+  )
+  await page.route('**/api/contracts/templates', (route) =>
+    route.fulfill({ json: { items: [], fields: ['contract.number'], blocks: ['items'] } }),
+  )
+  await page.route('**/api/dashboard', (route) => route.fulfill({ json: dashboard }))
+  await page.route('**/api/reports**', (route) =>
+    route.fulfill({
+      json: route.request().url().endsWith('/api/reports')
+        ? { items: [{ key: 'active_rentals', title: 'Locações ativas' }] }
+        : {
+            key: 'active_rentals',
+            title: 'Locações ativas',
+            note: '',
+            columns: [{ key: 'number', label: 'Contrato', type: 'text' }],
+            total: 0,
+            rows: [],
+          },
+    }),
+  )
+  await page.route('**/api/fiscal/documents**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/fiscal/provider', (route) =>
+    route.fulfill({
+      json: { name: 'fake', environment: 'SIMULACAO', is_simulation: true, document_kind: '' },
+    }),
+  )
+  await page.route('**/api/renewal-requests**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/backups', (route) =>
+    route.fulfill({
+      json: {
+        config: { enabled: false, time: '22:00', keep: 14, directory: '' },
+        directory: 'C:\\LocaControl\\data\\backups',
+        items: [],
+      },
+    }),
+  )
   // Somente o diagnóstico é simulado neste teste de UI. Smoke testa HTTP/banco reais.
   await page.route('**/health', (route) =>
     route.fulfill({ json: { status: 'ok', database: 'ok', schema: 'ok', version: '0.1.0' } }),
@@ -15,9 +57,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`seven pages, accessibility and responsive layout — ${theme}`, async ({
-    page,
-  }, testInfo) => {
+  test(`pages, accessibility and responsive layout — ${theme}`, async ({ page }, testInfo) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.emulateMedia({ colorScheme: theme })
@@ -28,14 +68,20 @@ for (const theme of ['light', 'dark'] as const) {
       ['/equipamentos', 'Equipamentos'],
       ['/orcamentos', 'Orçamentos'],
       ['/contratos', 'Contratos'],
+      ['/renovacoes', 'Renovações'],
+      ['/relatorios', 'Relatórios'],
+      ['/faturamento', 'Faturamento e fiscal'],
+      ['/backups', 'Backups'],
       ['/configuracoes', 'Configurações'],
     ]) {
       await page.goto(`/#${path}`)
       await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      if (!['/clientes', '/produtos', '/equipamentos'].includes(path))
-        await expect(page.getByText('Modo demonstração')).toBeVisible()
-      else await expect(page.getByText('Modo demonstração')).toHaveCount(0)
+      await expect(page.getByRole('status', { name: 'Carregando conteúdo' })).toHaveCount(0)
+      await expect(page.getByText('Modo demonstração')).toHaveCount(0)
+      if (path === '/') await expect(page.getByText('R$ 15.234,50')).toBeVisible()
+      if (path === '/faturamento')
+        await expect(page.getByText('SIMULAÇÃO — sem valor fiscal.')).toBeVisible()
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth > window.innerWidth,
       )
@@ -86,28 +132,25 @@ test('keyboard, dialogs, search, table filters and page navigation', async ({ pa
   await expect(page.getByRole('link', { name: 'Pular para o conteúdo' })).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(page.locator('main')).toBeFocused()
-  await page.getByRole('button', { name: 'Novo orçamento' }).click()
+  // Dialog: focus stays inside while tabbing and returns to the trigger on Escape.
+  await page.getByRole('button', { name: 'Buscar páginas' }).click()
   const dialog = page.getByRole('dialog')
-  await dialog.getByRole('button', { name: 'Validar prévia' }).click()
-  await expect(dialog.getByLabel('Nome de exemplo')).toHaveAttribute('aria-invalid', 'true')
-  await dialog.getByLabel('Nome de exemplo').fill('Prévia fictícia')
+  await expect(dialog.getByRole('textbox', { name: 'Nome da página' })).toBeVisible()
   for (let i = 0; i < 7; i++) {
     await page.keyboard.press('Tab')
     expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
   }
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('button', { name: 'Novo orçamento' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Buscar páginas' })).toBeFocused()
   await page.getByRole('button', { name: 'Buscar páginas' }).click()
-  await page.getByRole('textbox', { name: 'Nome da página' }).fill('Orçamentos')
-  await page.getByRole('dialog').getByRole('link', { name: 'Orçamentos' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Orçamentos' })).toBeVisible()
-  await page.getByRole('textbox', { name: 'Buscar em orçamentos' }).fill('Ninguém')
-  await expect(page.getByText('Nenhum resultado encontrado')).toBeVisible()
+  await page.getByRole('textbox', { name: 'Nome da página' }).fill('Contratos')
+  await page.getByRole('dialog').getByRole('link', { name: 'Contratos' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Contratos' })).toBeVisible()
+  await page.getByRole('textbox', { name: 'Buscar em contratos' }).fill('Ninguém')
+  await expect(page.getByText('Nenhum contrato encontrado')).toBeVisible()
   await page.getByRole('button', { name: 'Limpar filtros' }).first().click()
-  await page.getByRole('combobox', { name: 'Estado da prévia' }).selectOption('error')
-  await expect(page.getByRole('alert')).toContainText('erro simulado')
-  await page.getByRole('button', { name: 'Tentar novamente' }).click()
-  await expect(page.getByRole('table')).toBeVisible()
+  await expect(page.getByText('Nenhum contrato ainda')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Buscar em contratos' })).toHaveValue('')
   if (page.viewportSize()!.width < 1024) {
     await page.getByRole('button', { name: 'Abrir menu' }).click()
     await page.getByRole('dialog').getByRole('link', { name: 'Produtos', exact: true }).click()

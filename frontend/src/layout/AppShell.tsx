@@ -10,43 +10,47 @@ import {
   Boxes,
   ArrowUpRight,
 } from 'lucide-react'
-import { navigation, navigationItems } from './navigation'
+import { navigation, portalNavigation } from './navigation'
 import { Button } from '../components/Button'
 import { ThemeSelect } from '../components/ThemeSelect'
 import { Modal } from '../components/Modal'
-import { DemoNotice } from '../components/ui'
 import { readPreference, writePreference } from '../lib/preferences'
-import { useAuth, pathPermission } from '../auth/context'
+import { canOpen, homePath, isPortalUser, useAuth } from '../auth/context'
+import type { AuthUser } from '../auth/api'
+
+/** The menu of the signed-in account: the portal for customers, the workspace otherwise. */
+function allowedNavigation(user: AuthUser | null) {
+  return (isPortalUser(user) ? portalNavigation : navigation)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) =>
+          (!user?.must_change_password || item.path === '/perfil') && canOpen(user, item.path),
+      ),
+    }))
+    .filter((group) => group.items.length)
+}
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth()
   return (
     <nav aria-label="Navegação principal" className="navigation">
-      {navigation.map((group) => (
+      {allowedNavigation(user).map((group) => (
         <div className="nav-group" key={group.label}>
           <p className="nav-group-label">{group.label}</p>
-          {group.items
-            .filter((item) => {
-              const permission = pathPermission(item.path)
-              return (
-                (!user?.must_change_password || item.path === '/perfil') &&
-                (!permission || user?.permissions.includes(permission))
-              )
-            })
-            .map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                end
-                title={item.label}
-                onClick={onNavigate}
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              >
-                <item.icon size={18} aria-hidden="true" />
-                <span>{item.label}</span>
-                {!item.ready && <span className="future-dot" aria-label="Etapa futura" />}
-              </NavLink>
-            ))}
+          {group.items.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end
+              title={item.label}
+              onClick={onNavigate}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <item.icon size={18} aria-hidden="true" />
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
         </div>
       ))}
     </nav>
@@ -57,13 +61,9 @@ export function AppShell() {
   const { user, logout } = useAuth()
   const [logoutError, setLogoutError] = useState('')
   const [loggingOut, setLoggingOut] = useState(false)
-  const allowedItems = navigationItems.filter((item) => {
-    const permission = pathPermission(item.path)
-    return (
-      (!user?.must_change_password || item.path === '/perfil') &&
-      (!permission || user?.permissions.includes(permission))
-    )
-  })
+  const portal = isPortalUser(user)
+  const groups = allowedNavigation(user)
+  const allowedItems = groups.flatMap((group) => group.items)
   const signOut = async () => {
     setLoggingOut(true)
     setLogoutError('')
@@ -76,8 +76,8 @@ export function AppShell() {
     }
   }
   const location = useLocation()
-  const current = navigationItems.find((item) => item.path === location.pathname)
-  const group = navigation.find((group) =>
+  const current = allowedItems.find((item) => item.path === location.pathname)
+  const group = groups.find((group) =>
     group.items.some((item) => item.path === location.pathname),
   )?.label
   const [collapsed, setCollapsed] = useState(
@@ -120,12 +120,12 @@ export function AppShell() {
         Pular para o conteúdo
       </a>
       <aside className="sidebar" aria-label="Menu lateral">
-        <Link className="brand" to="/" aria-label="LocaControl, início">
+        <Link className="brand" to={homePath(user)} aria-label="LocaControl, início">
           <span className="brand-mark">
             <Boxes size={22} aria-hidden="true" />
           </span>
           <span>
-            LocaControl<small>GESTÃO DE LOCAÇÕES</small>
+            LocaControl<small>{portal ? 'PORTAL DO CLIENTE' : 'GESTÃO DE LOCAÇÕES'}</small>
           </span>
         </Link>
         <Navigation />
@@ -195,12 +195,12 @@ export function AppShell() {
             <nav aria-label="Breadcrumb">
               <ol className="breadcrumbs">
                 <li>
-                  <Link to="/">Início</Link>
+                  <Link to={homePath(user)}>{portal ? 'Portal' : 'Início'}</Link>
                 </li>
                 <li>
                   <ChevronRight size={14} aria-hidden="true" />
                 </li>
-                {group && group !== 'Principal' && (
+                {group && group !== 'Principal' && group !== 'Portal do cliente' && (
                   <>
                     <li>{group}</li>
                     <li>
@@ -231,7 +231,7 @@ export function AppShell() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Clientes, contratos, produtos…"
+                  placeholder={portal ? 'Contratos, documentos…' : 'Clientes, contratos, produtos…'}
                 />
               </label>
               <div className="command-results">
@@ -272,25 +272,17 @@ export function AppShell() {
               {logoutError}
             </p>
           )}
-          {![
-            '/perfil',
-            '/usuarios',
-            '/perfis',
-            '/auditoria',
-            '/clientes',
-            '/produtos',
-            '/equipamentos',
-            '/estoque',
-            '/precos',
-            '/importacoes',
-          ].includes(location.pathname) && <DemoNotice />}
           <Outlet />
         </main>
         <footer className="app-footer">
           <span>
             LocaControl <span aria-hidden="true">·</span> Ambiente local
           </span>
-          <span>Cadastros, estoque e preços</span>
+          <span>
+            {portal
+              ? 'Portal disponível na rede local da locadora'
+              : 'Locações, estoque e documentos'}
+          </span>
         </footer>
       </div>
     </div>

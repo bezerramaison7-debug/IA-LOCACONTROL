@@ -76,7 +76,9 @@ test('real identity lifecycle and accessible security screens', async ({ page },
   await page.getByRole('button', { name: 'Alterar senha', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Entrar na sua conta' })).toBeVisible()
   await enter(username, replacement)
-  await expect(page.getByRole('heading', { name: 'Meu perfil' })).toBeVisible()
+  // A customer account lands on the portal; without a customer link it only explains why.
+  await expect(page.getByRole('heading', { level: 1, name: 'Portal do cliente' })).toBeVisible()
+  await expect(page.getByText('Portal ainda não liberado para esta conta')).toBeVisible()
   expect((await page.request.get('/api/users')).status()).toBe(403)
   await page.goto('/#/usuarios')
   await expect(page.getByRole('alert')).toContainText('não tem permissão')

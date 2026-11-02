@@ -25,3 +25,4 @@ auth-test-results/
 auth-playwright-report/
 .DS_Store
 Thumbs.db
+docs/guia-visual/*.zip

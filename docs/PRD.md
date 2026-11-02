@@ -20,11 +20,11 @@ Permissões efetivas são verificadas no backend. Necessidade de negócio não e
 
 ## 3. Escopo e baseline
 Entrega oficial: etapas 0–12 de [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md).
-Checkpoint de 08/10: etapas 0–3 concluídas; etapa 4 parcial; 5–12 não iniciadas. Fontes de cadastros/importação inspecionados em 11/10; banco e testes não reexecutados nesta sessão documental.
+Checkpoint de 11/10/2026: etapas 0–3 concluídas; etapa 4 parcial (Excel real não enviado); etapas 5–11 com backend e telas implementados e testados (141 testes de backend, 63 de frontend e 36 cenários de E2E real aprovados sobre o commit `82e0845`); etapa 12 com a entrega técnica feita (auditoria independente do backend corrigida, teste de aceite pela API, E2E pela interface e guias) e aceite do usuário pendente. A versão 1.0 não está declarada concluída. Nada foi homologado com dados reais da locadora nem validado pelo usuário no navegador.
 Fora do escopo confirmado: multiempresa, planos de assinatura, cobrança do próprio SaaS e implantação pública automática. Local/LAN é a arquitetura inicial. Preparação web segue [PUBLICATION_ROADMAP.md](PUBLICATION_ROADMAP.md).
 
 ## 4. Catálogo de requisitos e aceite
-Estados: E = implementação existente, com evidências históricas; P = parcial; F = futuro. E não significa nova homologação nesta sessão.
+Estados: E = implementado e coberto por testes automatizados; P = parcial (a coluna diz o que falta); F = futuro. E não significa homologação com dados reais nem aceite do usuário.
 
 | ID | Requisito | Estado | Dependência | Critério de aceite |
 | --- | --- | --- | --- | --- |
@@ -35,25 +35,25 @@ Estados: E = implementação existente, com evidências históricas; P = parcial
 | RF-EST-001 | Seis saldos e movimentos de estoque | E | Produtos/equipamentos | Sem saldo negativo; operação repetida não duplica movimento; auditoria atômica |
 | RF-PRE-001 | Preços por período e vigência | E | Produtos | Valores exatos e revisões históricas preservadas |
 | RF-IMP-001 | Upload, análise, mapeamento e DRY RUN | P | Cadastros | Excel real conciliado; prévia sem gravação comercial; confirmação revalidada |
-| RF-IMP-002 | Migração de histórico de contratos/renovações | F | Etapas 6/7 e Excel real | Códigos/vínculos preservados; nenhuma informação descartada silenciosamente |
-| RF-ORC-001 | Orçamentos com itens, preços e descontos | F | Preços e regras de cálculo | Cálculo exato, snapshots, numeração, estados, PDF, aprovação e duplicação |
-| RF-CON-001 | Contrato direto ou de orçamento | F | Orçamentos/modelo real | Numeração sem colisão; snapshots e documento versionado |
-| RF-RET-001 | Retirada e vínculo físico | F | Contratos/estoque | Apenas quantidade disponível; equipamento não fica em duas locações incompatíveis |
-| RF-REN-001 | Renovação total/parcial numerada | F | Contrato/retirada | Próximo sufixo único; origem preservada; escolha de preço registrada |
-| RF-DEV-001 | Devolução parcial/total | F | Retirada | Não excede pendente; registra condição; atualiza estoque e mantém saldo restante |
-| RF-MAN-001 | Encaminhamento e retorno de manutenção | F | Equipamentos/estoque | Transições e histórico coerentes com condição da devolução |
-| RF-REL-001 | Dashboard, filtros e exportações reais | F | Dados comerciais | Indicadores reconciliáveis; receita contratada distinta de pagamento recebido |
-| RF-POR-001 | Portal com dados próprios | F | Cliente/contratos | Consultas por ID e downloads isolados; solicitação não cria renovação definitiva |
-| RF-FIS-001 | Faturamento e integração fiscal | F | Regras contábeis/provedor | Estados e retornos rastreáveis; sandbox real homologado antes de produção |
-| RF-OPS-001 | Backup, restore e atualização | F | Banco/documentos/importações | Restauração isolada recupera conjunto completo; atualização preserva conta/dados |
-| RF-REL-002 | Release 1.0 e guias | F | Todos os critérios obrigatórios | Fluxo integral, segurança e recuperação comprovados |
+| RF-IMP-002 | Migração de histórico de contratos/renovações | F — entidades de destino existem; mapeamento não implementado | Excel real | Códigos/vínculos preservados; nenhuma informação descartada silenciosamente |
+| RF-ORC-001 | Orçamentos com itens, preços e descontos | E — API e tela | Preços e regras de cálculo | Cálculo exato, snapshots, numeração, estados, PDF, aprovação e duplicação |
+| RF-CON-001 | Contrato direto ou de orçamento | P — API e tela entregues; modelo de contrato é provisório, só PDF, sem upload do assinado | Modelo real do usuário | Numeração sem colisão; snapshots e documento versionado |
+| RF-RET-001 | Retirada e vínculo físico | E — API e tela; sem reserva na confirmação | Contratos/estoque | Apenas quantidade disponível; equipamento não fica em duas locações incompatíveis |
+| RF-REN-001 | Renovação total/parcial numerada | E — API e tela | Contrato/retirada | Próximo sufixo único; origem preservada; escolha de preço registrada |
+| RF-DEV-001 | Devolução parcial/total | E — API e tela | Retirada | Não excede pendente; registra condição; atualiza estoque e mantém saldo restante |
+| RF-MAN-001 | Encaminhamento e retorno de manutenção | P — devolução encaminha à manutenção e o retorno usa os movimentos de estoque; sem registro próprio de intervenção | Definição de escopo | Transições e histórico coerentes com condição da devolução |
+| RF-REL-001 | Dashboard, filtros e exportações reais | E — API e telas (Dashboard real, Relatórios e resumo do cliente) | Contratos | Indicadores reconciliáveis; receita contratada distinta de pagamento recebido |
+| RF-POR-001 | Portal com dados próprios | E — API e telas; isolamento testado; uso fora do computador da locadora depende de publicação | Vínculo conta–cliente | Consultas por ID e downloads isolados; solicitação não cria renovação definitiva |
+| RF-FIS-001 | Faturamento e integração fiscal | P — API e tela com provedor de simulação; sem provedor real, sem regra tributária | Contabilidade, provedor e sandbox | Estados e retornos rastreáveis; sandbox real homologado antes de produção |
+| RF-OPS-001 | Backup, restore e atualização | P — API, tela de backups e scripts Windows entregues e testados; falta ensaio de restauração com dados reais e `update.ps1` nunca foi executado | Dados reais | Restauração isolada recupera conjunto completo; atualização preserva conta/dados |
+| RF-REL-002 | Release 1.0 e guias | P — guias escritos e verificação automatizada feita; falta o aceite do usuário e os insumos externos | Todos os critérios obrigatórios | Fluxo integral, segurança e recuperação comprovados |
 
 ## 5. Regras comerciais
 - Dinheiro exato: Decimal e centavos; quantidades em milésimos no banco atual.
-- Períodos: diária, semanal, quinzenal e mensal. Duração, arredondamento, frações e cobrança precisam de decisão antes da etapa 5.
+- Períodos: diária 1, semanal 7, quinzenal 15 e mensal 30 dias corridos. Valor do item = quantidade × preço do período × nº de períodos, sem fração; arredondamento por item (decisões de 11/10, ADR-014).
 - Produto não é equipamento físico. Estados de estoque: disponível, reservado, locado, manutenção, indisponível, baixado.
 - Orçamento não reserva definitivamente ao adicionar item. Alteração de preço exige autorização.
-- Contrato usa ID interno separado de número comercial; renovação mantém raiz e sequência (9193, 9193.1).
+- Contrato usa ID interno separado de número comercial; renovação mantém raiz e sequência (9193, 9193.1). Próximo número = maior existente + 1, com inicial configurável. Vencendo/vencido são calculados pela data de devolução (antecedência padrão de 3 dias).
 - Preços novos não alteram snapshots antigos.
 - Devolução parcial mantém quantidades pendentes e histórico.
 - Original Excel, códigos, origem, conflitos e campos sem destino são preservados.
@@ -76,7 +76,8 @@ Conferir saldo, cálculos, documentos, snapshots, permissões e auditoria. Depoi
 Medir divergências de estoque, erros de importação, tempo para emitir orçamento/contrato, tarefas concluídas sem retrabalho e sucesso de restauração. Baseline, metas, período e responsáveis ainda devem ser acordados; não existem números validados.
 
 ## 9. Decisões e insumos pendentes
-Excel real via interface; modelo contratual; regras de duração/cobrança; estado de cancelamento do orçamento; transições e limiar de vencimento; regras contábeis/provedor/sandbox; metas operacionais e destino de publicação.
+Resolvidos em 11/10/2026: duração/cobrança, cancelamento do orçamento, transições de contrato e limiar de vencimento (ADR-014 a ADR-016).
+Ainda pendentes: Excel real via interface; modelo contratual real (em uso um provisório); dados da locadora para o cabeçalho dos documentos; regras contábeis, provedor fiscal e credenciais de sandbox; metas operacionais; destino de publicação.
 Registrar decisões permanentes em DECISIONS e regras em BUSINESS_RULES.
 
 ## 10. Governança e rastreabilidade

@@ -1,219 +1,141 @@
 # LocaControl — AI Handoff
 
-## Atualização documental — 2026-10-11
-Criados PRD.md, TRD.md, APP_FLOW.md, DESIGN_BRIEF.md e BACKEND_SCHEMA.md; DEVELOPMENT_PLAN.md complementado como sexto documento com tarefas, especialistas, dependências e aceite; CONTINUE_PROMPT.md atualizado para todos eles.
-Esta sessão foi autorizada apenas para documentação. Não houve código funcional, migration, execução de testes, inspeção de banco ou publicação.
-O restante deste checkpoint registra a execução de 08/10; resultados e disponibilidade do servidor são históricos, não revalidados hoje.
-O novo prompt contém autorização para etapas 4–12 quando enviado pelo usuário na conversa de execução; salvar o prompt não ativa essa execução.
-Próxima ação documental: usar CONTINUE_PROMPT.md na retomada. Próxima ação funcional permanece homologar Excel pela interface e conferir baseline antes de alterar código.
-Arquivos adicionais atualizados: README.md, PROJECT_STATE.md, CHANGELOG.md e PUBLICATION_ROADMAP.md (próxima ação antiga corrigida).
-
+Checkpoint de retomada. Última atualização: 2026-10-11 (America/Sao_Paulo).
 
 ## Identificação
 
-Projeto: LocaControl
-Etapa atual: ETAPA 4 — Importador do Excel legado
-Status da etapa: PARCIAL
-Última atualização: 2026-10-08 21:51 America/Sao_Paulo
-Branch atual: master, sem commits. Commit atual: inexistente.
-Etapas 0–3 CONCLUÍDAS. Etapas 5–12 NÃO INICIADAS.
-Autorização nesta execução: concluir Etapa 3 e executar Etapa 4. Não avançar automaticamente para Etapa 5.
+- Projeto: LocaControl (locação de equipamentos). Raiz: pasta `SAAS LOCACAO`.
+- Branch: `dev/etapas-4-12`. Commit conferido: `82e0845`. Baseline: `2b3d1d2` em `master`. Sem remoto configurado.
+- Autorização vigente do usuário: "Sim, executar 4–12", com commits por etapa validada nesta branch. Publicação, contratação e uso de credenciais reais NÃO estão autorizados.
+- Etapa atual: 12, com a **entrega técnica concluída** (auditoria do backend corrigida, teste de aceite, telas das etapas 8–11, E2E e guias). **A versão 1.0 NÃO está declarada concluída nem homologada**: faltam o aceite do usuário e os insumos externos listados em PRÓXIMA AÇÃO EXATA. A etapa 4 segue PARCIAL por depender do Excel real.
 
-## Objetivo atual
+## Concluído (não refazer)
 
-Permitir que o usuário envie, pela interface, o Excel que já usa na locadora, analise abas/colunas e converta dados com mapeamento, prévia, validação e confirmação. Não procurar caminho local nem presumir layout. O mecanismo está implementado e testado; aceite integral depende de homologação do Excel real e das entidades de contratos/renovações previstas em etapas posteriores.
+| Item | Commit | Evidência |
+| --- | --- | --- |
+| Etapas 0–3 e mecanismo da etapa 4 | `2b3d1d2` | Baseline |
+| Etapa 5: backend e tela de orçamentos | `d687a00`, `6f7dffc` | `test_quotes.py` |
+| Etapas 6/7: backend de contratos, documentos, retirada, renovação e devolução | `7420b75` | `test_contracts.py`, `test_operations.py` |
+| Etapas 6/7: telas de contratos, renovações, retiradas, devoluções e manutenção | `2caa3e3` | `contracts.spec.ts` no E2E real |
+| Custódia de contratos protege o estoque manual | `2b44e8e` | `test_operations.py` |
+| Filtro por origem na listagem de contratos | `d3916f3` | `test_reports.py` |
+| Etapa 8: API de dashboard, relatórios e exportações | `f92cb22` | `test_reports.py` |
+| Etapa 9: API do portal | `a6638d6` | `test_portal.py` |
+| Etapa 10: API fiscal em simulação | `68374a7` | `test_fiscal.py` |
+| Etapa 11: API de backup/restauração e scripts Windows | `70c1d5e`, `3062f8f` | `test_backups.py` |
+| Etapa 12: teste de aceite do cenário oficial (26 passos) pela API | `892b6bd` | `test_release_journey.py` |
+| Log de mensagens da aplicação e variáveis novas no `.env.example` | `2036cea` | `backend/app/main.py`, `.env.example` |
+| Etapa 12: correções da auditoria independente do backend (11 achados, 1 de severidade alta) | `b0d9ec4` | 7 testes novos nos módulos afetados |
+| Etapas 8–11: telas de Dashboard real ("Visão geral"), Relatórios, resumo do cliente, Portal, Faturamento e fiscal, Backups, "Vincular cliente" em Usuários, solicitações em Renovações e filtros avançados em Contratos; remoção de `frontend/src/demo` | `82e0845` | Vitest e specs `reports`, `portal`, `fiscal` e `backups` do E2E real |
+| Etapa 12: guias INSTALLATION, ADMIN_GUIDE, USER_GUIDE e RELEASE_NOTES_1.0 | Não commitados | Arquivos em `docs/` |
 
-## Estado geral desta etapa
+Não refazer: autenticação e perfis, estrutura visual, cadastros, estoque, preços, importador, orçamentos, contratos, operação, os backends e as telas das etapas 8–11 e os guias; migrations 0001–0010. Não recriar arquivos por checklist antiga. Não resetar usuário nem banco. Não executar bootstrap: existe uma conta.
 
-- [x] Upload .xlsx/.xlsm pela interface.
-- [x] Análise dinâmica: abas, amostra, fórmulas, mesclas, valores e formatos de origem.
-- [x] Seleção de aba e cabeçalho, mapeamento por coluna, formato de datas/decimais.
-- [x] Clientes/endereço, produtos, equipamentos, preços e entradas iniciais de estoque.
-- [x] DRY RUN com rollback de registros, auditoria e origem.
-- [x] Confirmação explícita, revalidação do digest e transação.
-- [x] Erros/conflitos por linha; válidas importadas sem sobrescrever existentes.
-- [x] ImportBatch, checksum, original preservado e origem por aba/linha.
-- [x] Relatório JSON, histórico e nova conversão do mesmo original.
-- [x] Permissões/CSRF, testes backend/navegador, build e migrations locais.
-- [ ] Homologar arquivo real enviado pelo cliente, conferir totais e informações pendentes.
-- [ ] Encaminhar contratos/renovações para entidades das Etapas 6/7, mediante autorização correspondente.
+## Em andamento
 
-## Concluído nesta sessão
-
-Etapa 3 concluída: migration 0003 revisada; 21 testes comerciais; telas reais de clientes, produtos, equipamentos, estoque e preços; histórico/precisão/concorrência/permissões/auditoria validados. Baixa de reservado/locado bloqueada. Conta local preservada.
-
-Etapa 4 implementada em backend/app/imports e frontend/src/pages/Imports.tsx. API: GET /api/imports/fields, GET /api/imports, POST /api/imports/upload, GET /api/imports/{id}, GET /original, POST /preview, POST /confirm, POST /new-conversion, GET /report. Criadas migration 0004_imports e 10 testes do importador. Testes E2E reais exercitam upload, dry run, conversão parcial, relatório, reabertura e consulta de cliente importado nos quatro tamanhos.
-
-Aplicadas 0003 e 0004 após backup consistente. Alembic check sem drift; integridade ok, FKs sem violações; usuário/identidade/hash preservados, sem expor valores. Aplicação local iniciada em http://127.0.0.1:8000, health banco/schema ok, /api/imports sem sessão responde 401.
-
-## Trabalho parcialmente concluído
-
-### Homologação do Excel real
-
-Status: PARCIAL
-Arquivos envolvidos: backend/app/imports/workbook.py, service.py, frontend/src/pages/Imports.tsx, docs/EXCEL_IMPORT.md.
-O que funciona: envio/análise/mapeamento/conversão genéricos e testados com fixtures.
-O que falta: usuário enviar seu arquivo no sistema; conferir layout, fórmulas, referências, códigos, totais e dados sem destino. Não existe workbook real fornecido nesta execução.
-
-### Histórico de contratos e renovações
-
-Status: INCOMPLETO
-Arquivos envolvidos: docs/DEVELOPMENT_PLAN.md, docs/BUSINESS_RULES.md, importador.
-O que funciona: original preservado, abas/colunas sem destino explicitadas no relatório.
-O que falta: entidades e regras das Etapas 6/7. Não inventar implementação nem declarar histórico integral convertido. Etapas posteriores não autorizadas nesta execução.
-
-## Próximas tarefas
-
-1. Usuário enviar o Excel real em Gestão → Importações.
-2. Conferir análise do lote e mapear uma aba/módulo, usando prévia antes de confirmar.
-3. Comparar totais e amostra de registros com o arquivo; registrar regras/exceções reais em BUSINESS_RULES, DATABASE e PROJECT_STATE.
-4. Resolver conflitos/dados sem destino sem sobrescrever ou descartar informação.
-5. Aguardar autorização da etapa seguinte; contratos/renovações dependem das Etapas 6/7.
+Nada em implementação. Trabalho não commitado ao fim desta atualização: os quatro guias novos, `docs/EXCEL_IMPORT.md` e a passada de consistência da documentação. Conferir `git status` antes de afirmar o estado.
 
 ## PRÓXIMA AÇÃO EXATA
 
-Abra http://127.0.0.1:8000/#/importacoes com um administrador. O próprio usuário seleciona seu Excel no campo Arquivo Excel e clica Enviar e analisar Excel. Não pedir caminho local nem upload nesta conversa.
+Não há tarefa de implementação desbloqueada. Tudo abaixo depende do usuário; não iniciar nenhum item sem a condição indicada.
 
-Após o envio real, consulte GET /api/imports/{id}, confira abas, cabeçalho, fórmulas/mesclas e amostra. Mapeie a primeira aba/módulo e execute Validar e gerar prévia (DRY RUN). Compare linhas válidas, erros e pendências com o original antes de confirmar. Se uma regra real exigir ajuste no parser/conversão, abra backend/app/imports/workbook.py ou service.py, implemente somente o necessário e execute:
-.venv\Scripts\python.exe -m pytest backend/tests/test_imports.py -q -p no:cacheprovider
-Depois build frontend e E2E devem ser sequenciais; nunca recompilar dist durante smoke/E2E.
+| # | Ação do usuário | Condição de desbloqueio e o que vem depois |
+| --- | --- | --- |
+| 1 | Enviar o Excel real em Gestão → Importações e homologar | O arquivo ser enviado pela tela (nunca pedir caminho local). Conferir o lote, mapear, rodar o DRY RUN, comparar com o original e só então confirmar. **Só depois disso** implementar a conversão do histórico de contratos/renovações (IMP-04B), que não existe; as entidades de destino já existem (origem IMPORTADO) |
+| 2 | Fornecer o modelo real de contrato | Texto entregue pelo usuário; publicar em Gestão → Configurações → Modelo de contrato, sem marcar "provisório" |
+| 3 | Preencher `LOCACONTROL_COMPANY_*` no `.env` | Usuário informar nome, documento, endereço e contato da locadora; reiniciar o sistema |
+| 4 | Definir as regras fiscais com a contabilidade, escolher o provedor e fornecer credenciais de teste | Com os três em mãos, implementar um adapter real (contrato em `backend/app/fiscal/provider.py`) e homologar em ambiente de teste. Hoje só existe a simulação |
+| 5 | Percorrer o fluxo no navegador e dar o aceite | Usuário usar as telas (roteiro em USER_GUIDE) e apontar ajustes. Sem isso a versão 1.0 não é declarada |
+| 6 | Decidir a publicação web | Decisões P1–P4 de PUBLICATION_ROADMAP. Nada foi publicado; publicação, contratação e credenciais reais não estão autorizadas |
+| 7 | Decidir se `dev/etapas-4-12` é mesclada em `master` | Decisão explícita do usuário. Não há remoto configurado |
 
-## Arquivos criados nesta sessão
+## Limites conhecidos e melhorias técnicas em aberto
 
-- backend/tests/test_masters.py
-- backend/app/imports/__init__.py
-- backend/app/imports/models.py
-- backend/app/imports/workbook.py
-- backend/app/imports/schemas.py
-- backend/app/imports/service.py
-- backend/app/imports/routes.py
-- backend/migrations/versions/0004_imports.py
-- backend/tests/test_imports.py
-- frontend/src/lib/masters.ts
-- frontend/src/pages/masters-shared.tsx
-- frontend/src/pages/Masters.tsx
-- frontend/src/pages/Stock.tsx
-- frontend/src/pages/Prices.tsx
-- frontend/src/pages/Masters.test.tsx
-- frontend/src/pages/Imports.tsx
-- frontend/e2e/masters.spec.ts
-- frontend/e2e/imports.spec.ts
-- docs/CONTINUE_PROMPT.md
-- docs/EXCEL_IMPORT.md
+Conferidos no código em `82e0845`; lista completa para o usuário em RELEASE_NOTES_1.0 seção 6.
 
-## Arquivos alterados nesta sessão
+- Listas de Retiradas e Manutenção filtram no navegador (`frontend/src/pages/Operations.tsx`, `Maintenance.tsx`).
+- Histórico de orçamentos e contratos mostra "Usuário nº N", não o nome (`quotes-detail.tsx`, `contracts-detail.tsx`).
+- Sem reserva de estoque na confirmação do contrato; a disponibilidade é conferida na retirada (ADR-016).
+- Logs em `data/logs` sem rotação, sobrescritos a cada início (`scripts/launch.ps1`).
+- Cópias `pre-upgrade-*.db` e conjuntos `_pre-restore` nunca são podados; `prune` em `backend/app/ops/backup.py` só alcança backups regulares.
+- Descrição da permissão `workspace.view` desatualizada em `backend/app/auth/catalog.py` ("prévia dos módulos internos").
+- Chunk principal do frontend acima de 500 kB (aviso do Vite no build).
+- A auditoria independente foi somente leitura e só do backend: frontend, importação de Excel e rotas de identidade não foram cobertos.
+- E2E não repetido depois da alteração de duas frases (`Roles.tsx`, `Imports.tsx`); falha intermitente de `backups.spec.ts` relatada uma vez, sem causa identificada.
+- `scripts/update.ps1` nunca foi executado. Sem teste com leitor de tela. Sem ensaio de restauração com dados reais.
+- Só PDF, sem DOCX; sem upload do documento assinado; manutenção sem registro próprio; `.xls` binário não suportado; uma aba/módulo por importação; backup pelo sistema só para SQLite local.
 
-- backend/migrations/versions/0003_masters_masters.py
-- backend/migrations/env.py
-- backend/app/masters/models.py, service.py, routes.py
-- backend/app/auth/catalog.py, backend/app/core/config.py, backend/app/main.py
-- backend/pyproject.toml, backend/requirements-lock.txt
-- backend/tests/test_database.py, backend/tests/test_health.py
-- frontend/src/App.tsx, frontend/src/auth/api.ts, context.ts
-- frontend/src/layout/navigation.ts, AppShell.tsx
-- frontend/src/pages/Dashboard.tsx, frontend/src/styles.css
-- frontend/src/test/auth-fixture.ts, frontend/src/Shell.test.tsx
-- frontend/e2e/visual.spec.ts, frontend/playwright.auth.config.ts
-- scripts/e2e-auth.py
-- README.md
-- docs/AI_HANDOFF.md, PROJECT_STATE.md, DATABASE.md, ARCHITECTURE.md
-- docs/BUSINESS_RULES.md, DECISIONS.md, CHANGELOG.md
-- docs/PUBLICATION_ROADMAP.md, SECURITY.md, DESIGN_SYSTEM.md
+Decisões técnicas revisáveis que o usuário pode querer mudar: sem reserva de estoque na confirmação do contrato; renovação já nasce ativa; aprovação de solicitação do portal só registra a decisão; backup em `.zip`; fuso UTC−3 fixo. Ver ADR-015 a ADR-021.
 
-## Banco de dados e migrations
+## Comandos de verificação
 
-Criada: 0004_imports (lotes, origens, duas permissões).
-Revisada: 0003_masters (cadastros, movimentos, preços, dez permissões).
-Executadas localmente nesta sessão: 0003_masters e 0004_imports.
-Pendentes: nenhuma migration criada pendente.
-Estado confirmado: 0004_imports, 5 perfis, 18 permissões, 1 usuário. Clientes/produtos/equipamentos/movimentos/preços/lotes/origens: zero linhas reais.
-Backup anterior: data/backups/pre-imports-20261008-214138.db; consistente e íntegro.
-Identidade/hash comparados com backup e preservados. PRAGMA integrity_check ok, foreign_key_check zero, Alembic check sem drift.
-Downgrade somente nos testes temporários. Não executar bootstrap nem recriar banco.
-Backups futuros devem incluir banco E data/imports.
+Executar na raiz. Caminho com espaço: usar aspas.
 
-## Dependências adicionadas
+```powershell
+# Backend completo — observado em 11/10 sobre 82e0845: 141 passed, 1 warning
+.\.venv\Scripts\python.exe -m pytest backend/tests -q -p no:cacheprovider
 
-Backend: openpyxl 3.1.5 (leitura Excel), python-multipart 0.0.32 (upload), defusedxml 0.7.1 (XML seguro); et-xmlfile 2.0.0 transitiva. Manifesto e lock atualizados.
-Frontend: nenhuma.
-Outras: nenhuma.
+# Um módulo
+.\.venv\Scripts\python.exe -m pytest backend/tests/test_operations.py -q -p no:cacheprovider
 
-## Testes executados
+# Lint, formato, TypeScript e build
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 
-- .venv\Scripts\python.exe -m pytest backend/tests -q -p no:cacheprovider — PASSOU, 66 testes.
-- .venv\Scripts\python.exe -m pytest backend/tests/test_imports.py -q -p no:cacheprovider — PASSOU, 10 após nova conversão e mensagens finais.
-- npm --prefix frontend run test -- --run — PASSOU, 29.
-- powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 — PASSOU: Ruff, formato, ESLint, Prettier e build. Após ajustes visuais finais, Ruff/formato, ESLint, Prettier write e build passaram novamente.
-- npm run test:e2e em frontend com PLAYWRIGHT_CHROMIUM_EXECUTABLE — PASSOU, 16 visuais.
-- scripts/e2e-auth.py com Chromium — PASSOU, 12 cenários reais: 4 identidade, 4 comerciais, 4 upload. Sem violações Axe detectadas nos estados testados.
-- scripts/e2e-auth.py imports.spec.ts após revisão visual — PASSOU, 4; capturas mobile claro e desktop escuro inspecionadas.
-- .venv\Scripts\python.exe scripts/smoke.py após build — PASSOU, HTML/API/health/proxy; temporários removidos.
-- Upgrade local + Alembic check + integridade/FKs/conta — PASSOU.
-- GET local /health — PASSOU; GET /api/imports sem sessão — 401 esperado.
+# Testes de frontend — observado em 11/10: 63 testes em 13 arquivos
+npm.cmd --prefix frontend run test -- --run
 
-Repetição final após ajustes: frontend 29/29, Prettier e smoke PASSARAM. Varredura dos diretórios de fontes/documentos não encontrou arquivos .writing.tmp; referências de estado atuais conferidas.
+# E2E real (API + banco temporário), sempre depois do build, nunca em paralelo com ele
+# Observado em 11/10: 36 cenários (9 specs em 4 tamanhos de tela)
+$env:PLAYWRIGHT_CHROMIUM_EXECUTABLE = "$env:LOCALAPPDATA\ms-playwright\chromium-1234\chrome-win64\chrome.exe"
+$env:PYTHONPATH = 'backend'
+.\.venv\Scripts\python.exe scripts/e2e-auth.py
 
-## Testes ainda necessários
+# Revisão do banco local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\migrate.ps1 -Action current
+```
 
-Homologação de Excel real, comparação de totais e amostras, referências e histórico dependente. Fixtures não comprovam dados da empresa.
-Não há suíte automatizada conhecida falhando ao encerrar esta execução.
+Usar `-p no:cacheprovider`: o cache antigo `backend/.pytest_cache` pode negar acesso.
 
-## Erros conhecidos
+## Avisos operacionais desta máquina
 
-Não existe erro funcional automatizado pendente conhecido. Limites: .xls binário não suportado (salvar como .xlsx); uma aba/módulo por operação; fórmulas sem cache exigem recálculo/salvamento; contratos/renovações não convertidos ainda. Dados sem destino não desaparecem.
+- Plugin GateGuard (ecc): pode negar a primeira criação ou edição de cada arquivo, e alguns comandos, até os fatos serem declarados. Declarar em uma frase o que o arquivo é, quem o importa, o efeito em API/schema e a instrução do usuário, e repetir a mesma operação.
+- E2E: precisa de `PLAYWRIGHT_CHROMIUM_EXECUTABLE=%LOCALAPPDATA%\ms-playwright\chromium-1234\chrome-win64\chrome.exe` e de `PYTHONPATH=backend`.
+- Build do frontend limpa `frontend/dist`: não rodar smoke ou E2E enquanto o build está em andamento.
+- Vários agentes podem estar editando a árvore ao mesmo tempo (backend, frontend e documentação). Conferir `git status` e `git log` antes de afirmar o estado.
+- Heredocs longos no Bash da ferramenta falharam com texto contendo crases; scripts temporários gravados em arquivo funcionaram.
+- Não encerrar processos alheios; `scripts/stop.ps1` só encerra o servidor registrado em `data/locacontrol.pid`.
 
-Avisos não bloqueantes: Starlette/AnyIO depreciado, anotações do Zod e NO_COLOR/FORCE_COLOR.
-Cache antigo backend/.pytest_cache pode negar acesso: usar -p no:cacheprovider e não varrer esse diretório para verificar fontes.
+## Banco de dados e arquivos
 
-## Tentativas que NÃO funcionaram
+- Local: revisão `0010_backups`, 5 perfis, 32 permissões, 1 usuário, 1 modelo de contrato provisório; sem dados comerciais.
+- Cópias prévias de 11/10 em `data/backups`: `pre-quotes-20261011-084445.db`, `pre-contracts-20261011-090635.db`, `pre-upgrade-20261011-092925.db`.
+- Nenhuma migration pendente. Downgrade só em bancos temporários de teste.
+- Arquivos fora do banco: `data/imports`, `data/documents`, `data/fiscal`. O backup do sistema leva tudo junto.
+- `Iniciar LocaControl.cmd` aplica migrations pendentes sozinho, depois de copiar o banco.
 
-- apply_patch recusou caminho por reparse point; escrita completa via temporário PowerShell funciona. Comandos enormes excedem limite Windows; gravar em blocos.
-- Teste de API desconhecida usava /api/customers, agora rota real protegida; substituído por rota realmente inexistente e aprovado.
-- Fixture de limite usava coluna GR (=200, válida); corrigida para GS (=201).
-- Seletor E2E getByLabel exato de CPF/CNPJ incluía texto de options; corrigido para getByRole combobox com nome. Rodada inicial interrompida, repetição 12/12 e final 4/4 aprovadas.
-- Smoke durante build recebeu 404 porque dist foi temporariamente limpo; repetição sequencial PASSOU. Não construir frontend enquanto smoke/E2E usa dist.
-- Encerrado somente PID Playwright comprovadamente desta sessão para repetir teste; não encerrar processos alheios.
+## Dependências
 
-## Decisões tomadas
+Backend acrescentou `reportlab` (PDF) em 11/10; manifesto e lock atualizados. openpyxl agora também gera as exportações. Frontend: conferir `frontend/package.json` antes de afirmar mudanças.
 
-ADR-012 aceita: Decimal + inteiros escalados, versões/histórico, autorização/auditoria, baixa segura.
-ADR-013 aceita: Excel via upload dinâmico, sem caminho/layout fixo; original/checksum/origem, dry run, confirmação, conflitos não sobrescritos e pendências explícitas.
-Estoque inicial exige produto sem movimentos. Nova conversão reaproveita original. Etapa 4 permanece PARCIAL até homologação real e encaminhamento de dados históricos dependentes. Não iniciar Etapa 5 sem autorização.
+## Dados temporários e mocks
 
-## Não refazer
-
-Autenticação/perfis, estrutura visual, cadastros, estoque, preços, migrations 0003/0004, upload e conversão existentes. Não recriar arquivos por checklist antiga. Não resetar usuário/banco.
-
-## Dados temporários / mocks
-
-SQLite, usuários e workbooks de testes isolados em .test-tmp, removidos pelos testes/harness. Nenhum fixture na base real. Dashboard, orçamentos e contratos mantêm prévias identificadas; cadastros/estoque/preços/importações são reais. Capturas atuais em frontend/auth-test-results; relatórios de teste fora do Git.
-Servidor local persistente iniciado para revisão em 127.0.0.1:8000. Logs em data/logs/web.stdout.log e web.stderr.log.
+Testes usam SQLite, usuários, pastas e workbooks temporários. Nenhum fixture na base real. Não há mais dados de demonstração na interface: `frontend/src/demo` foi removido em `82e0845`. O provedor fiscal é simulação e marca seus documentos como tal.
 
 ## Credenciais e segredos
 
-Nenhuma credencial registrada. Usuário local existente preservado. Variável LOCACONTROL_IMPORT_DIRECTORY opcional para armazenamento. Não registrar tokens, senhas, hashes ou conteúdo de .env neste documento.
+Nenhuma credencial registrada em documentos. Não copiar tokens, senhas, hashes ou conteúdo de `.env`. O `.zip` de backup contém o banco inteiro, inclusive hashes de senha: tratar como confidencial.
 
-## Critérios de aceite restantes
+## Erros conhecidos
 
-Homologar Excel real via upload, validar totais, resolver conflitos e documentar exceções. Contratos/renovações dependem das etapas correspondentes; não marcar conversão integral concluída.
+Nenhuma suíte falhando na verificação de 11/10 sobre `82e0845` (números e ressalvas em PROJECT_STATE). Limites na seção "Limites conhecidos e melhorias técnicas em aberto" acima.
 
-## Estado para retomada
+## Documentos a ler na retomada
 
-- Etapas 0–3 concluídas; Etapa 4 PARCIAL e mecanismo utilizável.
-- Usuário exige arquivo enviado na interface, nunca caminho.
-- Arquivo real não fornecido; fixtures apenas.
-- Upload, análise, mapeamento, dry run, confirmação, relatórios e origem implementados.
-- Cinco módulos suportados; contratos/renovações preservados como pendentes.
-- Uma aba/módulo por operação; nova conversão reaproveita original.
-- 66 backend, 29 frontend, 16 visuais e 12 reais aprovados; 4 upload após visual também.
-- Banco local 0004, 5 perfis/18 permissões/1 conta preservada.
-- Backup pré-upgrade existente; originais devem acompanhar backup futuro.
-- Health local ok; /api/imports exige sessão.
-- Não executar bootstrap nem iniciar Etapa 5 automaticamente.
-- Próxima ação: usuário enviar seu Excel no sistema e homologar a prévia com o original.
+PROJECT_STATE (estado por etapa), DECISIONS (ADR-014 a ADR-021), BUSINESS_RULES (regras confirmadas), BACKEND_SCHEMA (tabelas e APIs), SECURITY (permissões e portal), RELEASE_NOTES_1.0 (limites e pendências), DESIGN_SYSTEM e CONTINUE_PROMPT.
 
 ## Últimas sessões
 
-- 2026-10-08: checkpoint e roteiro até publicação.
-- 2026-10-08: Etapa 3 concluída, Etapa 4 implementada/testada e banco atualizado; aceite real pendente.
-
+- 2026-10-08: etapa 3 concluída; etapa 4 implementada e testada com fixtures; banco em 0004.
+- 2026-10-11 (manhã): documentos estruturantes PRD, TRD, APP_FLOW, DESIGN_BRIEF e BACKEND_SCHEMA.
+- 2026-10-11: baseline no Git; backends das etapas 5–11; telas de orçamentos e de contratos/operação; banco em 0010; documentação permanente atualizada.
+- 2026-10-11 (fechamento técnico): correções da auditoria do backend, telas das etapas 8–11, guias da etapa 12 e verificação completa; versão 1.0 não declarada, aguardando o usuário.

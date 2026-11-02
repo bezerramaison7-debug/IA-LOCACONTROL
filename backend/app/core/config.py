@@ -26,3 +26,21 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # Enable behind HTTPS; local loopback uses HTTP.
     import_directory: Path = PROJECT_ROOT / "data" / "imports"
     session_hours: int = Field(default=8, ge=1, le=24)
+    # Generated contract PDFs; back up together with the database and imports.
+    document_directory: Path = PROJECT_ROOT / "data" / "documents"
+    # An active contract is shown as "vencendo" this many days before its expected return.
+    contract_due_soon_days: int = Field(default=3, ge=0, le=60)
+    # "fake" is the simulation. A real adapter needs sandbox credentials supplied via .env.
+    fiscal_provider: str = "fake"
+    fiscal_directory: Path = PROJECT_ROOT / "data" / "fiscal"
+    # Free text agreed with the accountant; the system does not infer the tax document type.
+    fiscal_document_kind: str = ""
+    # Default folder for backup sets; the administrator may choose another in the interface.
+    backup_directory: Path = PROJECT_ROOT / "data" / "backups"
+    # Background check for the daily automatic backup; tests turn it off.
+    backup_scheduler: bool = True
+    # Printed on commercial documents; set the real company data in .env.
+    company_name: str = "LocaControl"
+    company_document: str = ""
+    company_address: str = ""
+    company_contact: str = ""
