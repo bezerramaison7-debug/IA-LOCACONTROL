@@ -18,3 +18,17 @@ Cabeça do PR #1 (`dev/etapas-4-12` → `master`), aberto e não mesclado no mom
 Ao final, `data/` continha apenas `backups`, `locacontrol.db` e `logs`, como antes, e `git status` não mostrava alterações.
 
 Não coberto por esta validação: instalação em máquina Windows limpa, `scripts/update.ps1`, uso em rede local, leitores de tela e homologação com dados reais.
+
+## 2026-11-01 — SHA `27945bdef0d35a39202ed2680bc83191fc2cb132`
+
+Cabeça do PR #3 (`p0/integridade`, sobre o PR #2), com o modo manutenção, o desfazer automático da restauração, o teste de falha na migration pós-restauração e a recusa de restauração com a pasta de backups em outro disco. Árvore limpa; ambiente isolado; banco operacional não aberto para escrita.
+
+| Verificação | Resultado |
+| --- | --- |
+| `ruff check` | aprovado |
+| `pytest backend/tests` | 154 passaram (142 do SHA anterior + 12 de integridade) |
+| Vitest e build do frontend | 63 testes; build concluído |
+| E2E real (`scripts/e2e-auth.py`) | 36 passaram |
+| Smoke | aprovado |
+
+Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
