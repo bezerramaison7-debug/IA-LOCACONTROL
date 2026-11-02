@@ -131,3 +131,26 @@ it('keeps the restore blocked for a set that failed verification and shows a wro
   expect(await dialog.findByRole('alert')).toHaveTextContent('Senha incorreta')
   expect(clear).not.toHaveBeenCalled()
 })
+
+it('local edition: restores with the exact phrase only, without a password field', async () => {
+  const user = userEvent.setup()
+  const clear = vi.fn()
+  const request = api(() => ({ ...restored, message: 'Backup restaurado.' }))
+  renderPage(<Backups />, request, { clear, local: true })
+  await user.click(await screen.findByRole('button', { name: 'Restaurar ' + name }))
+  const dialog = within(screen.getByRole('dialog'))
+  expect(await dialog.findByText('Backup íntegro: pode ser restaurado.')).toBeInTheDocument()
+  expect(dialog.queryByLabelText('Sua senha')).not.toBeInTheDocument()
+  expect(dialog.getByRole('note')).not.toHaveTextContent(/terão de entrar novamente/)
+  const confirm = dialog.getByRole('button', { name: 'Restaurar este backup' })
+  const phrase = dialog.getByLabelText('Digite exatamente: RESTAURAR ' + name)
+  await user.type(phrase, 'RESTAURAR')
+  expect(confirm).toBeDisabled()
+  await user.clear(phrase)
+  await user.type(phrase, 'RESTAURAR ' + name)
+  await user.click(confirm)
+  await waitFor(() => expect(clear).toHaveBeenCalled())
+  expect(restoreCalls(request)).toEqual([
+    ['/backups/' + name + '/restore', 'POST', { confirmation: 'RESTAURAR ' + name }],
+  ])
+})

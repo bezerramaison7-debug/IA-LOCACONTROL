@@ -6,6 +6,8 @@ Os nomes em **negrito** são os que aparecem na tela.
 
 ## 1. Entrar e trocar a senha
 
+Na edição local (sem login) o LocaControl abre direto, sem usuário nem senha, e esta seção não se aplica: não há **Meu perfil**, **Sair**, **Usuários** nem **Perfis e permissões**. Se aparecer "Este computador não tem acesso ao LocaControl desta loja.", o navegador não está no computador principal.
+
 1. Abra o endereço do sistema no navegador. No computador onde ele está instalado, o endereço é `http://127.0.0.1:8000`.
 2. Em **Entrar na sua conta**, informe **Usuário** e **Senha** e clique em **Entrar**.
 3. No primeiro acesso, ou depois de o administrador redefinir a sua senha, o sistema abre **Meu perfil** com o aviso "Para continuar, substitua a senha temporária por uma senha pessoal." Enquanto a senha não for trocada, nenhuma outra tela fica disponível.

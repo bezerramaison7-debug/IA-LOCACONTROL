@@ -8,7 +8,7 @@ import { Field } from '../components/ui'
 import { ThemeSelect } from '../components/ThemeSelect'
 
 export function Login() {
-  const { user, login, loading } = useAuth()
+  const { user, local, login, loading } = useAuth()
   const location = useLocation()
   const [error, setError] = useState('')
   const {
@@ -24,6 +24,8 @@ export function Login() {
     requested !== '/login'
       ? requested
       : '/'
+  // Local edition: no login screen; the app enters by itself or shows the connection error.
+  if (local) return <Navigate to="/" replace />
   if (user) {
     const home = homePath(user)
     return (

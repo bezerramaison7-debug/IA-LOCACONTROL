@@ -3,6 +3,8 @@ import type { AuthUser } from './api'
 
 export type AuthContextValue = {
   user: AuthUser | null
+  /** Local edition: no login screen, profile, logout, users or portal. */
+  local?: boolean
   loading: boolean
   error: string
   refresh: () => Promise<void>

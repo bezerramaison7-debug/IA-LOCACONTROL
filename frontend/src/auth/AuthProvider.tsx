@@ -5,6 +5,8 @@ import { AuthContext } from './context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [local, setLocal] = useState(false)
+  const localRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const csrf = useRef('')
@@ -13,18 +15,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     generation.current++
   }, [])
   const cache = useQueryClient()
-  const clear = useCallback(() => {
+  const reset = useCallback(() => {
     generation.current++
     csrf.current = ''
     setUser(null)
     cache.clear()
   }, [cache])
+  const markLocal = useCallback((value: boolean) => {
+    localRef.current = value
+    setLocal(value)
+  }, [])
   const refresh = useCallback(() => {
     const current = ++generation.current
     return send('/auth/me', '')
       .then((raw) => {
         const data = sessionSchema.parse(raw)
         if (current === generation.current) {
+          markLocal(data.edition === 'local')
           setError('')
           csrf.current = data.csrf_token
           setUser(data.user)
@@ -33,9 +40,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error) => {
         if (current !== generation.current) return
-        clear()
+        if (error instanceof ApiError && error.local) markLocal(true)
+        reset()
         setError(
-          error instanceof ApiError && error.status === 401
+          error instanceof ApiError && error.status === 401 && !error.local
             ? ''
             : error instanceof Error
               ? error.message
@@ -43,7 +51,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         )
         setLoading(false)
       })
-  }, [clear])
+  }, [reset, markLocal])
+  /** Local edition: an ended session is reopened at once; there is no login screen. */
+  const clear = useCallback(() => {
+    reset()
+    if (localRef.current) {
+      setLoading(true)
+      void refresh()
+    }
+  }, [reset, refresh])
   useEffect(() => {
     void refresh()
     return invalidate
@@ -80,7 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clear()
   }
   return (
-    <AuthContext.Provider value={{ user, loading, error, refresh, login, logout, request, clear }}>
+    <AuthContext.Provider
+      value={{ user, local, loading, error, refresh, login, logout, request, clear }}
+    >
       {children}
     </AuthContext.Provider>
   )

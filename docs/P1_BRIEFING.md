@@ -24,7 +24,7 @@ Monólito modular existente (frontend compilado + FastAPI + SQLite). Uma instala
 | P0 Validação do SHA `af0474f` | Concluída; 142 backend, 63 frontend, 36 E2E, 16 visual, smoke | `docs/VALIDATION.md`, PR #2 |
 | PR #1 (etapas 4–12) | Mesclado na `master` (`866c67b`) após a validação | — |
 | P0 Integridade e recuperação | Implementado: modo manutenção, desfazer automático da restauração, 10 testes de falha | branch `p0/integridade`, PR #3 |
-| P1 Remover login | Pendente | — |
+| P1 Remover login | Implementado atrás de `LOCACONTROL_LOCAL_MODE` (padrão `false` até o instalador ligar): sessão automática só para o próprio computador, operador local auditado, rotas de login/usuários/perfis/portal com 404, restauração sem senha | branch `p1/a-sem-login`, ADR-023 |
 | P1 Instalador único | Pendente | — |
 | P1 Proteção automática (backup 20/60 min, rascunhos) | Pendente | — |
 | P1 Rede local | Pendente | — |

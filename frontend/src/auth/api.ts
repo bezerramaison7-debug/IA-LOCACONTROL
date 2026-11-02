@@ -12,7 +12,13 @@ export const userSchema = z.object({
   updated_at: z.number(),
 })
 export type AuthUser = z.infer<typeof userSchema>
-export const sessionSchema = z.object({ user: userSchema, csrf_token: z.string() })
+export const sessionSchema = z.object({
+  user: userSchema,
+  csrf_token: z.string(),
+  /** "local": no login, users or portal (ADR-023). Absent means the login-based edition. */
+  edition: z.string().optional(),
+  installation_id: z.string().optional(),
+})
 export type SessionData = z.infer<typeof sessionSchema>
 export const roleSchema = z.object({
   id: z.number(),
@@ -45,6 +51,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** The server runs the local edition: a 401 means "no access", never "sign in". */
+    public local = false,
   ) {
     super(message)
   }
@@ -73,6 +81,7 @@ export async function send(path: string, csrf: string, method = 'GET', body?: un
     throw new ApiError(
       response.status,
       typeof error.detail === 'string' ? error.detail : 'Não foi possível concluir a ação.',
+      response.headers.get('X-LocaControl-Edition') === 'local',
     )
   }
   return response.status === 204 ? undefined : response.json()

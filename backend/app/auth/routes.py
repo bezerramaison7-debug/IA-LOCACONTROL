@@ -1,18 +1,41 @@
+import secrets
+import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy import delete, func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import delete, func, select, text
 
 from app.auth import schemas
-from app.auth.dependencies import DB, CurrentUser, require, trusted_request
+from app.auth.dependencies import DB, CurrentUser, current_user, require, trusted_request
+from app.auth.local import (
+    HIDDEN_PERMISSION_GROUPS,
+    installation,
+    is_this_computer,
+    local_operator,
+    not_in_local_mode,
+)
 from app.auth.models import AuditLog, AuthSession, Permission, Role, User
 from app.auth.security import COOKIE, csrf_token, digest
 from app.auth.service import IdentityService, user_view
 
 router = APIRouter(prefix="/api", tags=["Identidade e segurança"])
+# Login, passwords, users and roles do not exist in the local edition (ADR-023).
+LoginEditionOnly = Depends(not_in_local_mode)
 
 
-@router.post("/auth/login", dependencies=[Depends(trusted_request)])
+def set_session_cookie(response: Response, settings, token: str):
+    response.set_cookie(
+        COOKIE,
+        token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="strict",
+        max_age=settings.session_hours * 3600,
+        path="/api",
+    )
+
+
+@router.post("/auth/login", dependencies=[LoginEditionOnly, Depends(trusted_request)])
 def login(payload: schemas.Login, request: Request, response: Response, db: DB):
     settings = request.app.state.settings
     token, result = IdentityService(db).login(
@@ -24,21 +47,57 @@ def login(payload: schemas.Login, request: Request, response: Response, db: DB):
     old = request.cookies.get(COOKIE)
     if old:
         db.execute(delete(AuthSession).where(AuthSession.token_hash == digest(old)))
-    response.set_cookie(
-        COOKIE,
-        token,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="strict",
-        max_age=settings.session_hours * 3600,
-        path="/api",
-    )
+    set_session_cookie(response, settings, token)
     return result
 
 
+def open_local_session(request: Request, response: Response, db) -> tuple[str, User]:
+    """Local edition: a session of the local operator for a browser on this computer."""
+    settings = request.app.state.settings
+    # GET has no writer lock by default; take it so two first tabs do not race.
+    db.execute(text("BEGIN IMMEDIATE"))
+    user = local_operator(db)
+    now = int(time.time())
+    db.execute(delete(AuthSession).where(AuthSession.expires_at <= now))
+    token = secrets.token_urlsafe(32)
+    db.add(
+        AuthSession(
+            token_hash=digest(token),
+            user_id=user.id,
+            created_at=now,
+            expires_at=now + settings.session_hours * 3600,
+        )
+    )
+    IdentityService(db, user).audit("local_session.opened", "users", user.id)
+    set_session_cookie(response, settings, token)
+    return token, user
+
+
 @router.get("/auth/me")
-def me(request: Request, user: CurrentUser):
-    return {"user": user_view(user), "csrf_token": csrf_token(request.cookies[COOKIE])}
+def me(request: Request, response: Response, db: DB):
+    local = request.app.state.settings.local_mode
+    try:
+        user = current_user(request, db)
+        token = request.cookies[COOKIE]
+    except HTTPException as error:
+        if not local:
+            raise
+        if not is_this_computer(request):
+            raise HTTPException(
+                401, "Este computador não tem acesso ao LocaControl desta loja."
+            ) from error
+        token, user = open_local_session(request, response, db)
+    view = user_view(user)
+    if local:
+        view["permissions"] = [
+            p for p in view["permissions"] if p.split(".")[0] not in HIDDEN_PERMISSION_GROUPS
+        ]
+    return {
+        "user": view,
+        "csrf_token": csrf_token(token),
+        "edition": "local" if local else "standard",
+        "installation_id": installation(db)["id"],
+    }
 
 
 @router.post("/auth/logout", status_code=204)
@@ -54,13 +113,13 @@ def logout(request: Request, response: Response, db: DB, user: CurrentUser):
     )
 
 
-@router.post("/auth/password", status_code=204)
+@router.post("/auth/password", status_code=204, dependencies=[LoginEditionOnly])
 def password(payload: schemas.PasswordChange, response: Response, db: DB, user: CurrentUser):
     IdentityService(db, user).change_password(payload.current_password, payload.new_password)
     response.delete_cookie(COOKIE, path="/api")
 
 
-@router.patch("/auth/me")
+@router.patch("/auth/me", dependencies=[LoginEditionOnly])
 def profile(payload: schemas.ProfileUpdate, db: DB, user: CurrentUser):
     service = IdentityService(db, user)
     service.audit(
@@ -70,13 +129,11 @@ def profile(payload: schemas.ProfileUpdate, db: DB, user: CurrentUser):
         {"before": {"name": user.name}, "after": {"name": payload.name}},
     )
     user.name = payload.name
-    import time
-
     user.updated_at = int(time.time())
     return user_view(user)
 
 
-@router.get("/users", dependencies=[Depends(require("users.read"))])
+@router.get("/users", dependencies=[LoginEditionOnly, Depends(require("users.read"))])
 def users(
     db: DB,
     q: str = Query("", max_length=80),
@@ -95,14 +152,14 @@ def users(
     }
 
 
-@router.post("/users", status_code=201)
+@router.post("/users", status_code=201, dependencies=[LoginEditionOnly])
 def create_user(
     payload: schemas.UserCreate, db: DB, actor: Annotated[User, Depends(require("users.write"))]
 ):
     return user_view(IdentityService(db, actor).create_user(**payload.model_dump()))
 
 
-@router.patch("/users/{user_id}")
+@router.patch("/users/{user_id}", dependencies=[LoginEditionOnly])
 def update_user(
     user_id: int,
     payload: schemas.UserUpdate,
@@ -112,7 +169,7 @@ def update_user(
     return user_view(IdentityService(db, actor).update_user(user_id, **payload.model_dump()))
 
 
-@router.post("/users/{user_id}/reset-password", status_code=204)
+@router.post("/users/{user_id}/reset-password", status_code=204, dependencies=[LoginEditionOnly])
 def reset_password(
     user_id: int,
     payload: schemas.PasswordReset,
@@ -133,12 +190,12 @@ def role_view(role: Role):
     }
 
 
-@router.get("/roles", dependencies=[Depends(require("roles.read"))])
+@router.get("/roles", dependencies=[LoginEditionOnly, Depends(require("roles.read"))])
 def roles(db: DB):
     return [role_view(r) for r in db.scalars(select(Role).order_by(Role.id))]
 
 
-@router.get("/permissions", dependencies=[Depends(require("roles.read"))])
+@router.get("/permissions", dependencies=[LoginEditionOnly, Depends(require("roles.read"))])
 def permissions(db: DB):
     return [
         {"code": p.code, "description": p.description}
@@ -146,7 +203,7 @@ def permissions(db: DB):
     ]
 
 
-@router.put("/roles/{role_id}/permissions")
+@router.put("/roles/{role_id}/permissions", dependencies=[LoginEditionOnly])
 def update_role(
     role_id: int,
     payload: schemas.RoleUpdate,

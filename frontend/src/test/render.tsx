@@ -15,7 +15,7 @@ export function mockRequest(handler: Handler) {
 export function renderPage(
   ui: ReactNode,
   request: ReturnType<typeof mockRequest>,
-  options: { entry?: string; permissions?: string[]; clear?: () => void } = {},
+  options: { entry?: string; permissions?: string[]; clear?: () => void; local?: boolean } = {},
 ) {
   const user = {
     ...adminSession.user,
@@ -28,6 +28,7 @@ export function renderPage(
       <AuthContext.Provider
         value={{
           user,
+          local: options.local,
           loading: false,
           error: '',
           refresh: async () => {},
