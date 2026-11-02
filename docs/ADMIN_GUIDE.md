@@ -101,7 +101,7 @@ A tela fica em **Financeiro → Faturamento e fiscal** (perfis Administrador e F
 
 **Gestão → Auditoria** mostra quem fez o quê e quando: acessos, usuários, cadastros, preços, orçamentos, contratos, retiradas, devoluções, documentos, backups e restaurações. Os registros não são apagados pela interface.
 
-Os logs técnicos ficam em `data\logs\web.stdout.log` e `web.stderr.log` e são sobrescritos a cada início. Não há rotação automática.
+Os logs técnicos ficam em `data\logs\web.stdout.log` (ou em `logs\` dentro de `LOCACONTROL_DATA_DIR`; ver [INSTALLATION.md](INSTALLATION.md) seção 6.1) e `web.stderr.log` e são sobrescritos a cada início. Não há rotação automática.
 
 ## 8. Atualização
 

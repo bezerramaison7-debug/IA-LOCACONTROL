@@ -1,18 +1,55 @@
+import os
+import sys
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+def program_root() -> Path:
+    """Read-only program files: the project folder, or PyInstaller's bundle when frozen."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    return Path(__file__).resolve().parents[3]
+
+
+PROJECT_ROOT = program_root()
+
+
+def resource(relative: str) -> Path:
+    """Shipped resource such as "backend/migrations", "backend/alembic.ini", "frontend/dist"."""
+    return program_root() / relative
+
+
+def data_root() -> Path:
+    """Persistent data of this installation (database, files, backups, logs, lock, .env).
+
+    LOCACONTROL_DATA_DIR comes from the process environment only, never from a .env file,
+    because the .env itself lives in this folder.
+    """
+    if value := os.environ.get("LOCACONTROL_DATA_DIR"):
+        return Path(value).resolve()
+    if getattr(sys, "frozen", False):
+        return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "LocaControl"
+    return program_root() / "data"
+
+
+def env_file() -> Path:
+    # Without a separate data folder the project's .env keeps working as before.
+    root = data_root()
+    return PROJECT_ROOT / ".env" if root == PROJECT_ROOT / "data" else root / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="LOCACONTROL_",
-        env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    def __init__(self, **values):
+        values.setdefault("_env_file", env_file())
+        super().__init__(**values)
 
     database_url: str = "sqlite:///./data/locacontrol.db"
     # Local edition (ADR-023): no login, automatic session for this computer only, no portal.
@@ -47,3 +84,25 @@ class Settings(BaseSettings):
     company_document: str = ""
     company_address: str = ""
     company_contact: str = ""
+
+    @model_validator(mode="after")
+    def derive_data_paths(self):
+        """Defaults follow the data folder; explicitly configured values always win."""
+        root = data_root()
+        if root == PROJECT_ROOT / "data":
+            return self
+        unset = set(type(self).model_fields) - self.model_fields_set
+        if "database_url" in unset:
+            self.database_url = f"sqlite:///{(root / 'locacontrol.db').as_posix()}"
+        for field, folder in DATA_FOLDERS.items():
+            if field in unset:
+                setattr(self, field, root / folder)
+        return self
+
+
+DATA_FOLDERS = {
+    "import_directory": "imports",
+    "document_directory": "documents",
+    "fiscal_directory": "fiscal",
+    "backup_directory": "backups",
+}

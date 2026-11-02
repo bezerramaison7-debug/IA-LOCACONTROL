@@ -88,6 +88,54 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update.ps1
 
 A atualização nunca apaga o banco. Se algo falhar, o sistema não sobe e o banco anterior está em `data\backups\pre-upgrade-*.db`.
 
+## 6.1 Programa e dados (P1-B)
+
+O programa e os dados ficam em pastas separadas. Trocar, reinstalar ou remover o programa não toca nos dados.
+
+| Pasta | Conteúdo | Quem escreve |
+| --- | --- | --- |
+| **Programa** (projeto; na edição instalada, `C:\Program Files\LocaControl`) | código, runtime Python, `frontend\dist`, `backend\migrations`, `backend\alembic.ini` | só a instalação ou a atualização; o servidor apenas lê |
+| **Dados** (`data\` do projeto ou `LOCACONTROL_DATA_DIR`; na edição instalada, `%ProgramData%\LocaControl`) | `locacontrol.db`, `imports\`, `documents\`, `fiscal\`, `backups\` (com `pre-upgrade-*.db`), `logs\`, `.env`, `locacontrol.lock`, `locacontrol.pid`, `locacontrol.installed` | o servidor |
+
+**Precedência dos caminhos**: uma variável específica (`LOCACONTROL_DATABASE_URL`, `LOCACONTROL_IMPORT_DIRECTORY`, `LOCACONTROL_DOCUMENT_DIRECTORY`, `LOCACONTROL_FISCAL_DIRECTORY`, `LOCACONTROL_BACKUP_DIRECTORY`) sempre vence. Sem ela, o caminho deriva de `LOCACONTROL_DATA_DIR`. Sem `LOCACONTROL_DATA_DIR`, vale a pasta `data\` do projeto, como antes. No executável empacotado, a falta da variável faz o servidor usar `%ProgramData%\LocaControl`. Com `LOCACONTROL_DATA_DIR` definido, o `.env` é lido de dentro da pasta de dados. A variável só é lida do ambiente do processo, nunca de um `.env`. Use caminho absoluto.
+
+**Apontar para uma pasta existente** (por exemplo, a `data\` atual), sem mover nada:
+
+```powershell
+[Environment]::SetEnvironmentVariable('LOCACONTROL_DATA_DIR', 'C:\Users\<voce>\Documents\ChatGPT\SAAS LOCACAO\data', 'User')
+```
+
+Feche e reabra o terminal ou o atalho. Para voltar ao comportamento padrão, remova a variável. Copie o `.env` do projeto para a pasta de dados se ele tiver os dados da locadora.
+
+**Início do servidor** (`python -m app.server [--port N] [--prepare]`, usado por `scripts\launch.ps1` e pelo executável). As etapas são:
+
+1. Confere a pasta de dados.
+2. Obtém o bloqueio de instância única.
+3. Aplica as migrations com cópia prévia do banco em `backups\pre-upgrade-*.db`.
+4. Cria `admin/admin` apenas na edição com login.
+5. Sobe em `127.0.0.1`.
+
+Com `--prepare`, o servidor só prepara o banco e encerra.
+
+| Código de saída | Significado |
+| --- | --- |
+| 0 | encerrou normalmente |
+| 3 | já há um LocaControl em execução com esta mesma pasta de dados (nada foi alterado) |
+| 4 | pasta de dados indisponível ou banco desaparecido (nada foi criado) |
+
+**Instância única**: o servidor trava um byte do arquivo `locacontrol.lock` (`msvcrt.locking`) antes de qualquer migration. A trava pertence ao processo: o Windows a solta quando ele termina, mesmo encerrado à força. Por isso o arquivo que sobra na pasta é inofensivo e não deve ser apagado à mão.
+
+**Pasta de dados indisponível**: o servidor cria a pasta sozinho apenas na primeira instalação, e só quando a pasta-mãe já existe e aceita gravação. Ele encerra com o código 4, sem criar banco, quando:
+
+- a pasta-mãe não existe (unidade ou compartilhamento ausente);
+- não há permissão de gravação;
+- existe um arquivo no lugar da pasta;
+- o banco sumiu de uma pasta já usada, reconhecida pelo marcador `locacontrol.installed`, gravado depois da primeira preparação bem-sucedida. Nesse caso, restaure um backup ou corrija o caminho.
+
+**Atualização, reinstalação e desinstalação**: `scripts\update.ps1` só escreve na pasta do programa (`.venv`, `backend`, `frontend\dist`). Na pasta de dados ele apenas para o servidor, que apaga o próprio registro de processo. O instalador (P1-E) deve preservar `%ProgramData%\LocaControl` ao atualizar e reinstalar, e **não removê-la na desinstalação por padrão**.
+
+**Executável (prova de empacotamento)**: `scripts\package.ps1` gera `dist-app\LocaControl\LocaControl.exe` a partir de `packaging\locacontrol.spec`. A saída é uma pasta com `_internal\`, ignorada pelo Git, e o comando requer `pip install pyinstaller==6.22.3` no `.venv` e o `frontend\dist` compilado. O executável recebe `LOCACONTROL_DATA_DIR` e `LOCACONTROL_LOCAL_MODE` por variável de ambiente (ou pelo `.env` da pasta de dados, exceto `LOCACONTROL_DATA_DIR`) e a porta por `--port`. O instalador e o teste em Windows limpo ficam para o P1-E.
+
 ## 7. Uso por outros computadores da rede
 
 O atalho de início não libera acesso pela rede. Para isso é preciso, no mínimo:

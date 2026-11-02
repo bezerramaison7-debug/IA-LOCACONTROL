@@ -1,6 +1,8 @@
 ﻿param([switch]$SkipFrontend)
-# Atualiza uma instalação existente sem tocar em data\ (banco, importações, documentos,
-# backups). O schema é atualizado por launch.ps1, sempre com cópia prévia do banco.
+# Atualiza somente o programa (.venv, backend, frontend\dist) e nunca escreve na pasta de dados
+# (data\ ou LOCACONTROL_DATA_DIR: banco, importações, documentos, backups); a única ação sobre
+# ela é parar o servidor, que apaga o próprio registro de processo. O schema é atualizado pelo
+# servidor no próximo início (app.server), sempre com cópia prévia do banco.
 . (Join-Path $PSScriptRoot 'common.ps1')
 Assert-ProjectPython
 Push-Location $ProjectRoot

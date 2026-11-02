@@ -1,6 +1,7 @@
 ﻿# Encerra somente o servidor iniciado por launch.ps1, conferindo que o processo é o LocaControl.
+# O registro do processo fica na pasta de dados (LOCACONTROL_DATA_DIR ou data\ do projeto).
 . (Join-Path $PSScriptRoot 'common.ps1')
-$PidFile = Join-Path $ProjectRoot 'data\locacontrol.pid'
+$PidFile = Join-Path $DataDir 'locacontrol.pid'
 if (-not (Test-Path -LiteralPath $PidFile)) {
     Write-Host 'LocaControl não está em execução por este atalho.'
     return
@@ -12,7 +13,8 @@ if (-not [int]::TryParse((Get-Content -LiteralPath $PidFile -TotalCount 1), [ref
     return
 }
 $Process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
-if ($Process -and $Process.CommandLine -match 'uvicorn' -and $Process.CommandLine -match 'app\.main:app') {
+if ($Process -and $Process.CommandLine -match 'app\.server') {
+    # Encerramento forçado: o bloqueio de instância única é do sistema e se desfaz junto.
     Stop-Process -Id $ProcessId -Force
     Write-Host 'LocaControl encerrado.'
 } else {

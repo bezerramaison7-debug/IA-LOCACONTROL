@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app import __version__
 from app.contracts.models import AppSetting
 from app.core.clock import BUSINESS_TZ
-from app.core.config import PROJECT_ROOT
+from app.core.config import resource
 from app.persistence.database import resolve_database_url
 
 logger = logging.getLogger(__name__)
@@ -247,7 +247,7 @@ class BackupManager:
     # ---- restore -------------------------------------------------------------------
 
     def migrations(self) -> ScriptDirectory:
-        return ScriptDirectory(str(PROJECT_ROOT / "backend" / "migrations"))
+        return ScriptDirectory(str(resource("backend/migrations")))
 
     def _extract_database(self, archive: zipfile.ZipFile, target: Path):
         with archive.open(DATABASE_MEMBER) as source, target.open("wb") as out:
@@ -343,7 +343,7 @@ class BackupManager:
                     placed.append(label)
                 if report["revision"] != head:
                     self.engine.dispose()
-                    migration = Config(str(PROJECT_ROOT / "backend" / "alembic.ini"))
+                    migration = Config(str(resource("backend/alembic.ini")))
                     migration.attributes["database_url"] = self.settings.database_url
                     command.upgrade(migration, "head")
             except Exception as error:

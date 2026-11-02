@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth.models import User
 from app.auth.schemas import UserCreate
 from app.auth.service import IdentityService
-from app.core.config import PROJECT_ROOT, Settings
+from app.core.config import Settings, resource
 from app.persistence.database import build_engine
 
 
@@ -26,7 +26,7 @@ def run_local(action: str, username: str, name: str, password: str, settings: Se
     try:
         with engine.connect() as connection:
             heads = set(MigrationContext.configure(connection).get_current_heads())
-        expected = set(ScriptDirectory(str(PROJECT_ROOT / "backend/migrations")).get_heads())
+        expected = set(ScriptDirectory(str(resource("backend/migrations"))).get_heads())
         if heads != expected:
             raise HTTPException(409, "Aplique as migrations antes deste comando.")
         with Session(engine) as db:
