@@ -241,6 +241,32 @@ class BackupManager:
     def migrations(self) -> ScriptDirectory:
         return ScriptDirectory(str(PROJECT_ROOT / "backend" / "migrations"))
 
+    def _extract_database(self, archive: zipfile.ZipFile, target: Path):
+        with archive.open(DATABASE_MEMBER) as source, target.open("wb") as out:
+            shutil.copyfileobj(source, out)
+
+    def _overwrite_database(self, source_path: Path):
+        self.engine.dispose()
+        source = sqlite3.connect(source_path)
+        live = sqlite3.connect(self.database_path(), timeout=10)
+        try:
+            source.backup(live)
+        finally:
+            source.close()
+            live.close()
+
+    def _undo(self, safety: Path, scratch, staging, replaced, moved, placed):
+        """Puts back the folders moved aside and the database saved in the safety copy."""
+        for label in placed:
+            shutil.move(str(self.folders()[label]), str(staging / label))
+        for label in moved:
+            shutil.move(str(replaced / label), str(self.folders()[label]))
+        if replaced.is_dir() and not any(replaced.iterdir()):
+            replaced.rmdir()
+        with zipfile.ZipFile(safety) as archive:
+            self._extract_database(archive, scratch)
+        self._overwrite_database(scratch)
+
     def restore(self, config: dict, name: str) -> dict:
         """Caller must have released its own database transaction before calling this."""
         path = self.path(config, name)
@@ -256,18 +282,20 @@ class BackupManager:
                 "Este backup foi criado por uma versão mais nova ou desconhecida do sistema. "
                 "Atualize o LocaControl antes de restaurá-lo.",
             )
-        database = self.database_path()
+        self.database_path()  # SQLite only, checked before anything is touched
+        head = scripts.get_current_head()
         with OPERATION_LOCK:
             safety = self.create(config, "pre-restore")
             stamp = datetime.now(BUSINESS_TZ).strftime("%Y-%m-%d_%H%M%S")
             directory = self.directory(config)
             replaced, staging = directory / f"replaced_{stamp}", directory / f".restore_{stamp}"
             scratch = path.with_name(f".{path.name}.restore.db")
+            # What has been changed so far, so a failure can be undone step by step.
+            touched, moved, placed = False, [], []
             try:
                 with zipfile.ZipFile(path) as archive:
                     # Everything is unpacked and checked before the live data is touched.
-                    with archive.open(DATABASE_MEMBER) as source, scratch.open("wb") as out:
-                        shutil.copyfileobj(source, out)
+                    self._extract_database(archive, scratch)
                     for label in self.folders():
                         root = (staging / label).resolve()
                         root.mkdir(parents=True, exist_ok=True)
@@ -282,36 +310,49 @@ class BackupManager:
                             destination.parent.mkdir(parents=True, exist_ok=True)
                             with archive.open(member) as source, destination.open("wb") as out:
                                 shutil.copyfileobj(source, out)
-                self.engine.dispose()
-                source_db, live = sqlite3.connect(scratch), sqlite3.connect(database, timeout=10)
-                try:
-                    source_db.backup(live)
-                finally:
-                    source_db.close()
-                    live.close()
+                touched = True
+                self._overwrite_database(scratch)
                 for label, folder in self.folders().items():
                     if folder.exists():
                         # Moved aside, never deleted: nothing stored after the backup is lost.
                         replaced.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(folder), str(replaced / label))
+                        moved.append(label)
                     folder.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(staging / label), str(folder))
-            except (OSError, sqlite3.Error) as error:
+                    placed.append(label)
+                if report["revision"] != head:
+                    self.engine.dispose()
+                    migration = Config(str(PROJECT_ROOT / "backend" / "alembic.ini"))
+                    migration.attributes["database_url"] = self.settings.database_url
+                    command.upgrade(migration, "head")
+            except Exception as error:
+                if not touched and isinstance(error, HTTPException):
+                    raise
                 logger.exception("Falha ao restaurar %s", name)
+                if touched:
+                    try:
+                        self._undo(
+                            directory / safety["name"], scratch, staging, replaced, moved, placed
+                        )
+                    except Exception:
+                        logger.exception("Falha ao desfazer a restauração de %s", name)
+                        raise HTTPException(
+                            500,
+                            "A restauração falhou e não foi possível voltar sozinha ao estado "
+                            "anterior. Restaure manualmente a cópia de segurança "
+                            f"{safety['name']} para voltar ao ponto de partida.",
+                        ) from error
+                    logger.warning("Restauração de %s desfeita: estado anterior recolocado.", name)
                 raise HTTPException(
                     500,
-                    "A restauração falhou antes de terminar. O estado anterior está na cópia de "
-                    f"segurança {safety['name']}; restaure-a para voltar ao ponto de partida.",
+                    "A restauração falhou e foi desfeita automaticamente: nada foi alterado. "
+                    f"O motivo ficou registrado no log (cópia de segurança {safety['name']}).",
                 ) from error
             finally:
                 scratch.unlink(missing_ok=True)
                 shutil.rmtree(staging, ignore_errors=True)
                 self.engine.dispose()
-        head = scripts.get_current_head()
-        if report["revision"] != head:
-            migration = Config(str(PROJECT_ROOT / "backend" / "alembic.ini"))
-            migration.attributes["database_url"] = self.settings.database_url
-            command.upgrade(migration, "head")
         logger.warning("Backup restaurado: %s (cópia prévia %s)", name, safety["name"])
         return {
             "restored": name,

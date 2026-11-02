@@ -18,6 +18,7 @@ from app.fiscal.routes import router as fiscal_router
 from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
 from app.ops.backup import BackupManager, BackupScheduler
+from app.ops.maintenance import MaintenanceGate, MaintenanceMiddleware
 from app.ops.routes import router as backups_router
 from app.persistence.database import build_engine
 from app.portal.routes import router as portal_router
@@ -60,6 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="LocaControl API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.state.gate = MaintenanceGate()
+    app.add_middleware(MaintenanceMiddleware, gate=app.state.gate)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

@@ -119,20 +119,22 @@ def restore(request: Request, name: str, payload: RestoreInput, db: DB, user: Ma
     # The restore replaces the database contents: release this request's writer lock first.
     db.commit()
     db.close()
-    result = backups.restore(config, name)
-    with Session(request.app.state.engine) as restored:
-        # The acting account may not exist in the restored data; keep only its label.
-        restored.add(
-            AuditLog(
-                actor_id=None,
-                actor_label=username,
-                action="backup.restored",
-                entity="backups",
-                entity_id=name,
-                changes=result,
+    # Maintenance: new requests get 503 and this waits for the ones in flight (held=1 is this one).
+    with request.app.state.gate.exclusive(held=1):
+        result = backups.restore(config, name)
+        with Session(request.app.state.engine) as restored:
+            # The acting account may not exist in the restored data; keep only its label.
+            restored.add(
+                AuditLog(
+                    actor_id=None,
+                    actor_label=username,
+                    action="backup.restored",
+                    entity="backups",
+                    entity_id=name,
+                    changes=result,
+                )
             )
-        )
-        restored.commit()
+            restored.commit()
     return {
         **result,
         "message": "Backup restaurado. Entre novamente: as sessões voltaram ao estado do backup.",
