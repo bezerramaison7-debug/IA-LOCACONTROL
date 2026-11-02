@@ -75,6 +75,12 @@ Restaurar faz o sistema voltar exatamente ao estado do backup escolhido. Tudo o 
 
 Nada é apagado: as pastas de arquivos anteriores vão para `replaced_AAAA-MM-DD_HHMMSS` dentro da pasta de backups, e a cópia `_pre-restore` permite desfazer a restauração. Um backup feito por uma versão mais nova do sistema é recusado: atualize o LocaControl antes.
 
+**Modo manutenção e desfazer automático.** Durante a restauração o sistema entra em manutenção: quem tentar usar o sistema recebe "Sistema em manutenção (restauração em andamento). Tente novamente em instantes." e `/health` responde 503 com status `maintenance`. A restauração só começa depois que as operações em andamento terminam; se elas não terminarem em 30 segundos, ela desiste sem alterar nada (tente de novo). Se algum passo falhar depois de o banco ter sido substituído (mover pastas, atualizar a estrutura do banco), o sistema volta sozinho ao estado anterior a partir da cópia `_pre-restore` e das pastas em `replaced_*`, registra o motivo no log e avisa que nada foi alterado. Se nem isso for possível, a mensagem informa o nome da cópia `_pre-restore` para restauração manual.
+
+**Limite: mesmo disco.** A restauração só funciona com a pasta de backups no mesmo disco dos dados (banco, importações, documentos e fiscal), porque as pastas são trocadas por renomeação. Se a pasta de backups estiver em outro disco (pendrive, HD externo), o sistema recusa a restauração antes de alterar qualquer coisa. Para restaurar uma cópia guardada em outro disco, copie o arquivo `.zip` para uma pasta no disco dos dados, configure-a como pasta de backups e restaure de lá. Gravar backups em outro disco continua permitido.
+
+**O que o sistema garante numa queda de energia.** Uma operação só é confirmada na tela depois de gravada no banco. Uma queda (ou um travamento do Windows) no meio de uma gravação não corrompe o banco nem deixa operação pela metade: na próxima abertura o SQLite descarta o que não foi confirmado. Mas a operação que ainda não tinha sido confirmada no instante da queda é perdida e precisa ser lançada de novo. Não há promessa de perda zero em qualquer falha de energia; o backup diário fora do computador continua sendo a proteção contra perda do disco.
+
 Recomendação: uma vez por trimestre, restaure um backup em outro computador de teste para confirmar que a recuperação funciona.
 
 ## 5. Estoque e contratos
