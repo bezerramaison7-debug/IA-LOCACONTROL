@@ -23,6 +23,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3,<10", "httpx2>=2.12,<3", "ruff>=0.11,<1"]
+# Packaging proof (scripts/package.ps1); not needed to run the server.
+package = ["pyinstaller==6.22.3"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

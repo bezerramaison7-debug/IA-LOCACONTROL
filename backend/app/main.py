@@ -16,7 +16,7 @@ from app.api.health import router as health_router
 from app.auth.local import installation, local_operator, not_in_local_mode
 from app.auth.routes import router as identity_router
 from app.contracts.routes import router as contracts_router
-from app.core.config import PROJECT_ROOT, Settings
+from app.core.config import Settings, resource
 from app.fiscal.routes import router as fiscal_router
 from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
@@ -62,7 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.engine = build_engine(settings.database_url)
         try:
-            scripts = ScriptDirectory(str(PROJECT_ROOT / "backend" / "migrations"))
+            scripts = ScriptDirectory(str(resource("backend/migrations")))
             app.state.expected_heads = set(scripts.get_heads())
             prepare_installation(app.state.engine, settings.local_mode)
             scheduler = None
@@ -128,7 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(portal_router, dependencies=[Depends(not_in_local_mode)])
     app.include_router(fiscal_router)
     app.include_router(backups_router)
-    dist = PROJECT_ROOT / "frontend" / "dist"
+    dist = resource("frontend/dist")
     if dist.is_dir():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
     return app

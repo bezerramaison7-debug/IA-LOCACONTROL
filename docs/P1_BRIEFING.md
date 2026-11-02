@@ -25,6 +25,7 @@ Monólito modular existente (frontend compilado + FastAPI + SQLite). Uma instala
 | PR #1 (etapas 4–12) | Mesclado na `master` (`866c67b`) após a validação | — |
 | P0 Integridade e recuperação | Implementado: modo manutenção, desfazer automático da restauração, 10 testes de falha | branch `p0/integridade`, PR #3 |
 | P1 Remover login | Implementado atrás de `LOCACONTROL_LOCAL_MODE` (padrão `false` até o instalador ligar): sessão automática só para o próprio computador, operador local auditado, rotas de login/usuários/perfis/portal com 404, restauração sem senha | branch `p1/a-sem-login`, ADR-023 |
+| P1-B Base de instalação (programa × dados, `LOCACONTROL_DATA_DIR`, ponto de entrada `app.server`, instância única, prova PyInstaller) | Implementado; instalador e teste em Windows limpo seguem pendentes (P1-E) | branch `p1/b-instalacao`, `docs/INSTALLATION.md` 6.1 |
 | P1 Instalador único | Pendente | — |
 | P1 Proteção automática (backup 20/60 min, rascunhos) | Pendente | — |
 | P1 Rede local | Pendente | — |
@@ -46,3 +47,9 @@ Um instalador prepara máquina limpa sem downloads; o atalho abre sem login; ope
 
 ## Entrega
 Um PR por tema (validação, integridade, sem login, empacotamento, proteção automática, rede), cada um com problema, comportamento final, decisões, testes executados, limitações e procedimento de recuperação. O GitHub CLI está autenticado nesta máquina (`gh`), e o Git usa essa credencial.
+
+## Critérios adicionais para as próximas frentes (registrados em 2026-11-01)
+- **P1-A/C:** expiração e renovação da sessão local preservam o formulário em edição; nenhuma escrita é repetida automaticamente sem idempotência.
+- **P1-C/E:** existe procedimento utilizável e verificado para recuperar backups guardados em outro disco (hoje a restauração recusa pasta de backups em outro disco).
+- **P1-D:** distinguir identidade da base/loja, do servidor e das estações; definir o efeito da restauração sobre pareamentos e revogações.
+- **Demonstração (pendente):** pacote de demonstração a partir do empacotamento do P1-B — executável sem login, pasta de dados exclusiva, dados fictícios cobrindo cliente, produto, preço, orçamento, contrato, retirada, renovação e devolução, marcação visível de DEMONSTRAÇÃO, sem dados reais/.env/backups, validado pelo próprio executável (interface e PDFs de orçamento e contrato), entregue com caminho, SHA de origem, checksum e instruções; distinguir "testado nesta máquina" de "validado em Windows limpo".
