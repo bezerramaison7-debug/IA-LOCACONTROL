@@ -92,18 +92,20 @@ export async function verifyBackup(request: Request, name: string) {
     await request('/backups/' + encodeURIComponent(name) + '/verify', 'POST'),
   )
 }
-/** Sends the phrase as typed: the server is the one that checks it before restoring. */
+/** Sends the phrase as typed: the server is the one that checks it before restoring.
+ * The local edition has no password: it is left out of the request. */
 export async function restoreBackup(
   request: Request,
   name: string,
   confirmation: string,
-  password: string,
+  password?: string,
 ) {
   return restoredSchema.parse(
-    await request('/backups/' + encodeURIComponent(name) + '/restore', 'POST', {
-      confirmation,
-      password,
-    }),
+    await request(
+      '/backups/' + encodeURIComponent(name) + '/restore',
+      'POST',
+      password === undefined ? { confirmation } : { confirmation, password },
+    ),
   )
 }
 export function downloadBackup(name: string) {

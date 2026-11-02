@@ -2,6 +2,10 @@
 
 Para quem responde pelo sistema na locadora: usuários, permissões, numeração, modelo de contrato, backup, restauração e atualização. Instalação em [INSTALLATION.md](INSTALLATION.md); uso das telas em [USER_GUIDE.md](USER_GUIDE.md).
 
+## Edição local (sem login)
+
+Quando o LocaControl roda com `LOCACONTROL_LOCAL_MODE=true` (edição local, ADR-023), o sistema abre direto neste computador, sem usuário nem senha. Não existem **Usuários**, **Perfis e permissões**, **Meu perfil**, **Sair** nem o portal do cliente, e as seções 1 e 9 deste guia não se aplicam. Todas as funções ficam disponíveis a quem usar o computador: proteja o acesso ao próprio Windows. Na **Auditoria**, as ações aparecem como "operador local · instalação …", que indica a origem, não a pessoa. Outro computador da rede não entra (o acesso de estações será liberado por código de pareamento em versão futura).
+
 ## 1. Usuários e perfis
 
 Em **Gestão → Usuários** o administrador cria contas (**Novo usuário**), troca o perfil (**Editar**), define uma nova senha temporária (**Redefinir senha**) e desativa ou reativa a conta (**Desativar** / **Reativar**). A senha temporária tem de 12 a 128 caracteres e o sistema exige a troca no primeiro acesso. Contas não são apagadas: desative quem saiu, para preservar o histórico.
@@ -69,9 +73,9 @@ Em **Gestão → Backups** (de fábrica, somente administrador):
 Restaurar faz o sistema voltar exatamente ao estado do backup escolhido. Tudo o que foi lançado depois deixa de aparecer.
 
 1. Em **Gestão → Backups**, clique em **Restaurar** no conjunto desejado. A janela verifica o conjunto sozinha e só libera os campos se ele estiver íntegro.
-2. Digite a frase pedida — `RESTAURAR ` seguida do nome exato do arquivo, respeitando maiúsculas e minúsculas — e, em **Sua senha**, a sua própria senha.
+2. Digite a frase pedida — `RESTAURAR ` seguida do nome exato do arquivo, respeitando maiúsculas e minúsculas — e, em **Sua senha**, a sua própria senha. Na edição local não há senha: basta a frase.
 3. Clique em **Restaurar este backup**.
-4. O sistema grava antes uma cópia de segurança do estado atual (`..._pre-restore.zip`, que aparece na lista com o tipo "Anterior a uma restauração"), restaura o banco e os arquivos e pede que todos entrem novamente.
+4. O sistema grava antes uma cópia de segurança do estado atual (`..._pre-restore.zip`, que aparece na lista com o tipo "Anterior a uma restauração"), restaura o banco e os arquivos e pede que todos entrem novamente (na edição local o sistema volta a abrir sozinho).
 
 Nada é apagado: as pastas de arquivos anteriores vão para `replaced_AAAA-MM-DD_HHMMSS` dentro da pasta de backups, e a cópia `_pre-restore` permite desfazer a restauração. Um backup feito por uma versão mais nova do sistema é recusado: atualize o LocaControl antes.
 

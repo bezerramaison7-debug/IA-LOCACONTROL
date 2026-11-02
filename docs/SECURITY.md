@@ -2,9 +2,53 @@
 
 Implementação da Etapa 2. O resultado da validação e o estado das migrations estão em PROJECT_STATE e AI_HANDOFF.
 
+## Edição local sem login (ADR-023, 2026-11-01)
+
+Ligada por `LOCACONTROL_LOCAL_MODE=true` (padrão `false`; com `false` tudo abaixo deste capítulo vale sem mudança). Não há login, senha, `admin/admin`, usuários, perfis nem portal. As ações são feitas pelo **operador local** (`operador.local`, perfil Administrador, senha aleatória desconhecida) e auditadas como `operador local · instalação <8 primeiros do id da instalação>` — rótulo de origem, não de pessoa.
+
+### Sessão automática e por que ela não abre a rede
+
+`GET /api/auth/me` sem sessão válida cria uma sessão do operador (mesmo cookie HttpOnly, SameSite Strict, `Path=/api`, mesma expiração) e devolve o `csrf_token` somente quando **todas** as condições valem (`app/auth/local.py`, `is_this_computer`):
+
+1. o par TCP (`request.client.host`) é loopback — outro computador da rede recebe 401;
+2. o `Host` pedido é `localhost`, `127.0.0.1` ou `[::1]` — um nome estranho que resolva para 127.0.0.1 (DNS rebinding) recebe 401;
+3. há o cabeçalho `X-LocaControl-Request: 1` — uma página de outro site não consegue enviá-lo sem pré-verificação CORS, que é recusada fora de `cors_origins`;
+4. a `Origin`, quando enviada, está em `allowed_origins`.
+
+Escritas continuam exigindo origem permitida, o cabeçalho do app e o `X-CSRF-Token` da sessão (403 caso contrário). O launcher escuta só em `127.0.0.1`. Limite: um proxy local que repasse pedidos da rede para o servidor (por exemplo o Vite exposto com `--host`) faria pedidos externos parecerem locais; não exponha o servidor nem o proxy de desenvolvimento na rede em modo local. Estações da rede serão autorizadas por código de pareamento (PR de rede).
+
+Respostas de `/api` em modo local trazem `X-LocaControl-Edition: local`, para a interface mostrar "sem acesso" em vez de uma tela de login.
+
+### Matriz de rotas em modo local
+
+| Rota | Modo local |
+| --- | --- |
+| `GET /health` | igual |
+| `GET /api/auth/me` | sessão automática (condições acima); devolve `edition: "local"` e `installation_id`; omite as permissões `users.*`, `roles.*` e `portal.*` |
+| `PATCH /api/auth/me` (nome do perfil) | **404** |
+| `POST /api/auth/login` | **404** |
+| `POST /api/auth/logout` | igual (encerra a sessão; a próxima chamada a `/me` abre outra) |
+| `POST /api/auth/password` | **404** |
+| `GET/POST /api/users`, `PATCH /api/users/{id}`, `POST /api/users/{id}/reset-password` | **404** |
+| `GET /api/roles`, `PUT /api/roles/{id}/permissions`, `GET /api/permissions` | **404** |
+| `GET /api/audit-logs` | igual (`audit.read`, que o operador tem) |
+| `GET/PUT /api/users/{id}/customer` (vínculo do portal) | **404** |
+| `/api/portal/*` (painel, contratos, equipamentos, documentos, orçamentos, cadastro, solicitações de renovação) | **404** |
+| `GET /api/renewal-requests`, `POST /api/renewal-requests/{id}/decide` | **404** (as solicitações só nascem no portal) |
+| Cadastros, estoque, preços (`/api/customers`, `/products`, `/equipment`, `/stock`, `/prices`) | igual, como operador local |
+| Importações (`/api/imports*`) | igual |
+| Orçamentos (`/api/quotes*`) | igual |
+| Contratos, documentos, retiradas, devoluções, renovações (`/api/contracts*`) | igual |
+| Dashboard, relatórios, resumo do cliente (`/api/dashboard`, `/api/reports*`, `/api/customers/{id}/summary`) | igual |
+| Fiscal (`/api/fiscal/*`) | igual |
+| Backups: listar, configurar, executar, verificar, baixar | igual |
+| `POST /api/backups/{nome}/restore` | **sem senha**; exige a frase exata `RESTAURAR <nome>` (422 se diferente), modo manutenção e cópia `_pre-restore` |
+
+O 404 vem de uma guarda explícita (`not_in_local_mode`) que roda antes da autenticação e responde "Recurso indisponível na edição local." O código dessas rotas permanece para a edição com login e para uma futura edição web.
+
 ## Primeiro administrador
 
-Desde 11/10/2026 (ADR-022) o atalho de início cria, em banco sem nenhum usuário, a conta `admin` com senha `admin` e troca obrigatória: até a troca por uma senha de 12+ caracteres a API responde 403 a qualquer função. A conta nunca é recriada. É uma credencial pública por definição: aceitável apenas na instalação local de máquina única, e a senha deve ser trocada logo após instalar. Em instalação acessível por rede, use o bootstrap interativo abaixo antes do primeiro início.
+Edição com login. Desde 11/10/2026 (ADR-022) o atalho de início cria, em banco sem nenhum usuário, a conta `admin` com senha `admin` e troca obrigatória: até a troca por uma senha de 12+ caracteres a API responde 403 a qualquer função. A conta nunca é recriada. É uma credencial pública por definição: aceitável apenas na instalação local de máquina única, e a senha deve ser trocada logo após instalar. Em instalação acessível por rede, use o bootstrap interativo abaixo antes do primeiro início.
 
 Na raiz do projeto, após as migrations, execute em um terminal PowerShell interativo:
 
@@ -123,7 +167,7 @@ Todo arquivo é entregue por rota autenticada e autorizada, como anexo, sem cami
 ### Backup e restauração
 
 - Tudo sob backups.manage (somente administrador de início). O conjunto contém todos os dados da empresa e os hashes de senha do banco: tratar o `.zip` como confidencial e guardá-lo em local protegido.
-- Restaurar exige, no mesmo pedido, a frase exata `RESTAURAR <nome do backup>` e a **senha do próprio usuário**. Senha incorreta responde 403, não restaura e é auditada (`backup.restore_denied`).
+- Restaurar exige, no mesmo pedido, a frase exata `RESTAURAR <nome do backup>` e a **senha do próprio usuário** (na edição local, só a frase; ver ADR-023). Senha incorreta responde 403, não restaura e é auditada (`backup.restore_denied`).
 - Antes de substituir qualquer coisa o sistema verifica manifesto, hashes e integridade do banco, recusa conjunto de versão desconhecida ou mais nova, cria uma cópia `_pre-restore` do estado atual e move as pastas de arquivos atuais para `replaced_<data>` em vez de apagá-las.
 - Depois da restauração, sessões e contas voltam ao estado do backup: é preciso entrar novamente. O evento `backup.restored` é gravado com o rótulo do usuário que restaurou.
 - Configuração e execução manual são auditadas (`backup.configured`, `backup.requested`).

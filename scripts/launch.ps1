@@ -57,8 +57,14 @@ try {
         Invoke-Checked -Executable $ProjectPython -Arguments ($Alembic + @('upgrade', 'head'))
     }
 
+    # Edição local (ADR-023): sem login, sem conta admin/admin. Lê LOCACONTROL_LOCAL_MODE do
+    # ambiente ou do .env pela mesma configuração usada pelo servidor.
+    $LocalMode = (& $ProjectPython -c "from app.core.config import Settings; print(Settings().local_mode)" | Out-String).Trim() -eq 'True'
     # Instalação nova, sem nenhum usuário: cria a conta de primeiro acesso.
-    $FirstRun = (& $ProjectPython -m app.auth.cli default | Out-String).Trim() -eq 'CREATED'
+    $FirstRun = $false
+    if (-not $LocalMode) {
+        $FirstRun = (& $ProjectPython -m app.auth.cli default | Out-String).Trim() -eq 'CREATED'
+    }
 
     # Start-Process não coloca aspas nos argumentos: o caminho com espaços precisa delas.
     $ServerArguments = @('-m', 'uvicorn', 'app.main:app', '--app-dir', "`"$Backend`"", '--host', '127.0.0.1', '--port', "$Port")

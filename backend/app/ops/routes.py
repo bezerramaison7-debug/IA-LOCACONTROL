@@ -37,7 +37,8 @@ class BackupConfig(Input):
 class RestoreInput(Input):
     # Must be exactly "RESTAURAR <nome do backup>".
     confirmation: str = Field(max_length=120)
-    password: str = Field(min_length=1, max_length=200)
+    # Required in the login-based edition; the local edition has no application password.
+    password: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 def manager(request: Request) -> BackupManager:
@@ -111,11 +112,16 @@ def restore(request: Request, name: str, payload: RestoreInput, db: DB, user: Ma
     backups.path(config, name)
     if payload.confirmation != f"RESTAURAR {name}":
         raise HTTPException(422, f'Digite exatamente "RESTAURAR {name}" para confirmar.')
-    username = user.username
-    if not verify_password(user.password_hash, payload.password):
-        IdentityService(db, user).audit("backup.restore_denied", "backups", name, {})
-        db.commit()
-        raise HTTPException(403, "Senha incorreta. A restauração não foi executada.")
+    service = IdentityService(db, user)
+    label = service.label()
+    # Local edition (ADR-023): no password; the phrase, maintenance mode and the copy remain.
+    if not request.app.state.settings.local_mode:
+        if payload.password is None:
+            raise HTTPException(422, "Dados inválidos. Confira os campos e os limites informados.")
+        if not verify_password(user.password_hash, payload.password):
+            service.audit("backup.restore_denied", "backups", name, {})
+            db.commit()
+            raise HTTPException(403, "Senha incorreta. A restauração não foi executada.")
     # The restore replaces the database contents: release this request's writer lock first.
     db.commit()
     db.close()
@@ -127,7 +133,7 @@ def restore(request: Request, name: str, payload: RestoreInput, db: DB, user: Ma
             restored.add(
                 AuditLog(
                     actor_id=None,
-                    actor_label=username,
+                    actor_label=label,
                     action="backup.restored",
                     entity="backups",
                     entity_id=name,
@@ -135,7 +141,10 @@ def restore(request: Request, name: str, payload: RestoreInput, db: DB, user: Ma
                 )
             )
             restored.commit()
+    local = request.app.state.settings.local_mode
     return {
         **result,
-        "message": "Backup restaurado. Entre novamente: as sessões voltaram ao estado do backup.",
+        "message": "Backup restaurado."
+        if local
+        else "Backup restaurado. Entre novamente: as sessões voltaram ao estado do backup.",
     }

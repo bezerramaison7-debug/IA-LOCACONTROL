@@ -2,15 +2,18 @@ import logging
 from contextlib import asynccontextmanager
 
 from alembic.script import ScriptDirectory
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app import __version__
 from app.api.health import router as health_router
+from app.auth.local import installation, local_operator, not_in_local_mode
 from app.auth.routes import router as identity_router
 from app.contracts.routes import router as contracts_router
 from app.core.config import PROJECT_ROOT, Settings
@@ -37,6 +40,20 @@ def configure_logging():
         logger.propagate = False
 
 
+def prepare_installation(engine, local_mode: bool):
+    """Installation id (never regenerated) and, in the local edition, the local operator."""
+    try:
+        with Session(engine) as db:
+            db.execute(text("BEGIN IMMEDIATE"))
+            installation(db)
+            if local_mode:
+                local_operator(db)
+            db.commit()
+    except SQLAlchemyError:
+        # Database not migrated yet: /health reports it; /api/auth/me creates both later.
+        logging.getLogger("app").warning("Identificação da instalação adiada: banco indisponível.")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     configure_logging()
@@ -47,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             scripts = ScriptDirectory(str(PROJECT_ROOT / "backend" / "migrations"))
             app.state.expected_heads = set(scripts.get_heads())
+            prepare_installation(app.state.engine, settings.local_mode)
             scheduler = None
             if settings.backup_scheduler:
                 scheduler = BackupScheduler(BackupManager(settings, app.state.engine))
@@ -76,6 +94,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+            if settings.local_mode:
+                # Lets the interface tell "this computer has no access" from "sign in".
+                response.headers["X-LocaControl-Edition"] = "local"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -103,7 +124,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(quotes_router)
     app.include_router(contracts_router)
     app.include_router(reports_router)
-    app.include_router(portal_router)
+    # The customer portal belongs to a future web edition; the code stays, the routes do not.
+    app.include_router(portal_router, dependencies=[Depends(not_in_local_mode)])
     app.include_router(fiscal_router)
     app.include_router(backups_router)
     dist = PROJECT_ROOT / "frontend" / "dist"

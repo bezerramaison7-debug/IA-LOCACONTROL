@@ -3,7 +3,7 @@ import { canOpen, homePath, isPortalUser, useAuth } from './context'
 import { ErrorState, Skeleton } from '../components/ui'
 
 export function RequireAuth() {
-  const { user, loading, error, refresh } = useAuth()
+  const { user, local, loading, error, refresh } = useAuth()
   const location = useLocation()
   if (loading)
     return (
@@ -18,6 +18,8 @@ export function RequireAuth() {
       </main>
     )
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />
+  // Local edition: there is no personal profile or password to change.
+  if (local && location.pathname === '/perfil') return <Navigate to="/" replace />
   if (user.must_change_password && location.pathname !== '/perfil')
     return <Navigate to="/perfil" replace />
   if (!canOpen(user, location.pathname)) {

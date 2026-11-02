@@ -6,6 +6,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.auth.catalog import permission_codes
+from app.auth.local import LOCAL_OPERATOR, operator_label
 from app.auth.models import AuditLog, AuthSession, LoginThrottle, Permission, Role, User
 from app.auth.security import csrf_token, digest, hasher, verify_password
 
@@ -34,14 +35,19 @@ class IdentityService:
         self.actor = actor
         self.local = local
 
+    def label(self) -> str:
+        if not self.actor:
+            return "operador_local" if self.local else "nao_autenticado"
+        if self.actor.username == LOCAL_OPERATOR:
+            return operator_label(self.db)
+        return self.actor.username
+
     def audit(self, action: str, entity: str, entity_id=None, changes=None):
         # Call sites supply an allowlist of non-secret fields, never request payloads.
         self.db.add(
             AuditLog(
                 actor_id=self.actor.id if self.actor else None,
-                actor_label=self.actor.username
-                if self.actor
-                else ("operador_local" if self.local else "nao_autenticado"),
+                actor_label=self.label(),
                 action=action,
                 entity=entity,
                 entity_id=str(entity_id) if entity_id is not None else None,

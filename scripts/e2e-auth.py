@@ -19,6 +19,81 @@ from openpyxl import Workbook
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def free_port() -> int:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+def run_suite(env, folder, base_url, port, config_name, arguments, log_name):
+    """Start a server on the temporary database and run one Playwright configuration."""
+    node = shutil.which("node")
+    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    with (Path(folder) / log_name).open("w", encoding="utf-8") as log:
+        server = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "app.main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+            ],
+            cwd=ROOT,
+            env=env,
+            stdout=log,
+            stderr=log,
+            creationflags=flags,
+        )
+        try:
+            for _ in range(100):
+                if server.poll() is not None:
+                    raise RuntimeError("Servidor E2E encerrou antes da inicialização")
+                try:
+                    with urlopen(base_url + "/health", timeout=1) as response:
+                        if response.status == 200:
+                            break
+                except OSError:
+                    time.sleep(0.1)
+            else:
+                raise RuntimeError("Timeout do servidor E2E")
+            result = subprocess.run(
+                [
+                    node,
+                    str(ROOT / "frontend/node_modules/playwright/cli.js"),
+                    "test",
+                    "--config=" + config_name,
+                    *arguments,
+                ],
+                cwd=ROOT / "frontend",
+                env=env,
+                creationflags=flags,
+                timeout=1500,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            print(result.stdout, flush=True)
+            print(result.stderr, file=sys.stderr, flush=True)
+        finally:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/PID", str(server.pid), "/T", "/F"],
+                    capture_output=True,
+                    check=False,
+                    timeout=15,
+                    creationflags=flags,
+                )
+            else:
+                server.terminate()
+            server.wait(timeout=15)
+    return result
+
+
 def main():
     node = shutil.which("node")
     if not node:
@@ -38,9 +113,7 @@ def main():
             "Fixture-browser-password!",
             settings,
         )
-        with socket.socket() as listener:
-            listener.bind(("127.0.0.1", 0))
-            port = listener.getsockname()[1]
+        port = free_port()
         base_url = f"http://127.0.0.1:{port}"
         env = {
             **os.environ,
@@ -78,74 +151,47 @@ def main():
         env["LOCACONTROL_BACKUP_DIRECTORY"] = str(Path(folder) / "backups")
         env["LOCACONTROL_BACKUP_SCHEDULER"] = "false"
         env["LOCACONTROL_FISCAL_PROVIDER"] = "fake"
-        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-        with (Path(folder) / "server.log").open("w", encoding="utf-8") as log:
-            server = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "uvicorn",
-                    "app.main:app",
-                    "--host",
-                    "127.0.0.1",
-                    "--port",
-                    str(port),
-                ],
-                cwd=ROOT,
-                env=env,
-                stdout=log,
-                stderr=log,
-                creationflags=flags,
-            )
-            try:
-                for _ in range(100):
-                    if server.poll() is not None:
-                        raise RuntimeError(
-                            "Servidor E2E encerrou antes da inicialização"
-                        )
-                    try:
-                        with urlopen(base_url + "/health", timeout=1) as response:
-                            if response.status == 200:
-                                break
-                    except OSError:
-                        time.sleep(0.1)
-                else:
-                    raise RuntimeError("Timeout do servidor E2E")
-                result = subprocess.run(
-                    [
-                        node,
-                        str(ROOT / "frontend/node_modules/playwright/cli.js"),
-                        "test",
-                        "--config=playwright.auth.config.ts",
-                        *sys.argv[1:],
-                    ],
-                    cwd=ROOT / "frontend",
-                    env=env,
-                    creationflags=flags,
-                    timeout=1500,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                )
-                print(result.stdout, flush=True)
-                print(result.stderr, file=sys.stderr, flush=True)
-            finally:
-                if os.name == "nt":
-                    subprocess.run(
-                        ["taskkill", "/PID", str(server.pid), "/T", "/F"],
-                        capture_output=True,
-                        check=False,
-                        timeout=15,
-                        creationflags=flags,
-                    )
-                else:
-                    server.terminate()
-                server.wait(timeout=15)
+        result = run_suite(
+            env,
+            folder,
+            base_url,
+            port,
+            "playwright.auth.config.ts",
+            sys.argv[1:],
+            "server.log",
+        )
         if result.returncode:
             raise SystemExit(result.returncode)
-    print("PASS: browser/API auth suite completed; temporary database/server removed")
+        # Local edition (ADR-023): another server, another empty database, no user at all.
+        local_url = f"sqlite:///{(Path(folder) / 'local.db').as_posix()}"
+        config.attributes["database_url"] = local_url
+        command.upgrade(config, "head")
+        local_port = free_port()
+        local_base = f"http://127.0.0.1:{local_port}"
+        local_env = {
+            **env,
+            "LOCACONTROL_LOCAL_MODE": "true",
+            "LOCACONTROL_DATABASE_URL": local_url,
+            "LOCACONTROL_ALLOWED_ORIGINS": f'["{local_base}"]',
+            "LOCACONTROL_BACKUP_DIRECTORY": str(Path(folder) / "local-backups"),
+            "LOCACONTROL_DOCUMENT_DIRECTORY": str(Path(folder) / "local-documents"),
+            "E2E_LOCAL_BASE_URL": local_base,
+        }
+        result = run_suite(
+            local_env,
+            folder,
+            local_base,
+            local_port,
+            "playwright.local.config.ts",
+            [],
+            "server-local.log",
+        )
+        if result.returncode:
+            raise SystemExit(result.returncode)
+    print(
+        "PASS: browser/API auth suite and local edition suite completed;"
+        " temporary databases/servers removed"
+    )
 
 
 if __name__ == "__main__":

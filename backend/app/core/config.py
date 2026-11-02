@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "sqlite:///./data/locacontrol.db"
+    # Local edition (ADR-023): no login, automatic session for this computer only, no portal.
+    # The packaged edition turns it on; False keeps the login-based edition.
+    local_mode: bool = False
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     allowed_origins: list[str] = [
         "http://localhost:8000",

@@ -152,7 +152,8 @@ function VerificationResult({ result }: { result: Verification }) {
   )
 }
 
-/** Restore replaces the data: it needs a visible verification, the exact phrase and the password. */
+/** Restore replaces the data: it needs a visible verification, the exact phrase and, in the
+ * login-based edition, the password. The local edition has no password (ADR-023). */
 export function RestoreDialog({
   item,
   onClose,
@@ -162,7 +163,7 @@ export function RestoreDialog({
   onClose: () => void
   onRestored: (message: string) => void
 }) {
-  const { request } = useAuth()
+  const { request, local } = useAuth()
   const [phrase, setPhrase] = useState('')
   const [password, setPassword] = useState('')
   const [failure, setFailure] = useState('')
@@ -174,7 +175,7 @@ export function RestoreDialog({
     gcTime: 0,
   })
   const expected = restorePhrase(item.name)
-  const ready = check.data?.ok === true && phrase === expected && password.length > 0
+  const ready = check.data?.ok === true && phrase === expected && (local || password.length > 0)
   return (
     <Modal
       open
@@ -191,7 +192,7 @@ export function RestoreDialog({
           if (!ready) return
           setFailure('')
           setBusy(true)
-          void restoreBackup(request, item.name, phrase, password)
+          void restoreBackup(request, item.name, phrase, local ? undefined : password)
             .then((result) =>
               onRestored(
                 result.message +
@@ -224,7 +225,7 @@ export function RestoreDialog({
               Antes de substituir, o sistema faz uma cópia de segurança do estado atual, que fica na
               lista de backups.
             </li>
-            <li>Todos os usuários, inclusive você, terão de entrar novamente.</li>
+            {!local && <li>Todos os usuários, inclusive você, terão de entrar novamente.</li>}
           </ul>
         </div>
         <Field
@@ -236,15 +237,17 @@ export function RestoreDialog({
           hint="Diferencia maiúsculas de minúsculas."
           onChange={(e) => setPhrase(e.target.value)}
         />
-        <Field
-          label="Sua senha"
-          type="password"
-          autoComplete="current-password"
-          maxLength={200}
-          value={password}
-          disabled={check.data?.ok !== true}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        {!local && (
+          <Field
+            label="Sua senha"
+            type="password"
+            autoComplete="current-password"
+            maxLength={200}
+            value={password}
+            disabled={check.data?.ok !== true}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        )}
         <Failure message={failure} />
         <div className="modal-actions">
           <Button variant="secondary" disabled={busy} onClick={onClose}>

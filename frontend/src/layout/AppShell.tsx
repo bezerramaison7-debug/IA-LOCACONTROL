@@ -19,23 +19,25 @@ import { canOpen, homePath, isPortalUser, useAuth } from '../auth/context'
 import type { AuthUser } from '../auth/api'
 
 /** The menu of the signed-in account: the portal for customers, the workspace otherwise. */
-function allowedNavigation(user: AuthUser | null) {
+function allowedNavigation(user: AuthUser | null, local?: boolean) {
   return (isPortalUser(user) ? portalNavigation : navigation)
     .map((group) => ({
       ...group,
       items: group.items.filter(
         (item) =>
-          (!user?.must_change_password || item.path === '/perfil') && canOpen(user, item.path),
+          (!user?.must_change_password || item.path === '/perfil') &&
+          !(local && item.path === '/perfil') &&
+          canOpen(user, item.path),
       ),
     }))
     .filter((group) => group.items.length)
 }
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
-  const { user } = useAuth()
+  const { user, local } = useAuth()
   return (
     <nav aria-label="Navegação principal" className="navigation">
-      {allowedNavigation(user).map((group) => (
+      {allowedNavigation(user, local).map((group) => (
         <div className="nav-group" key={group.label}>
           <p className="nav-group-label">{group.label}</p>
           {group.items.map((item) => (
@@ -58,11 +60,11 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth()
+  const { user, local, logout } = useAuth()
   const [logoutError, setLogoutError] = useState('')
   const [loggingOut, setLoggingOut] = useState(false)
   const portal = isPortalUser(user)
-  const groups = allowedNavigation(user)
+  const groups = allowedNavigation(user, local)
   const allowedItems = groups.flatMap((group) => group.items)
   const signOut = async () => {
     setLoggingOut(true)
@@ -133,21 +135,30 @@ export function AppShell() {
           <ThemeSelect compact={collapsed} />
           <div className="profile">
             <span className="avatar">{user?.name.slice(0, 1).toUpperCase()}</span>
-            <div>
-              <Link to="/perfil">
+            {local ? (
+              <div>
                 <strong>{user?.name}</strong>
-              </Link>
-              <small>{user?.role_codes.join(', ')}</small>
-            </div>
-            <Button
-              variant="ghost"
-              iconOnly
-              aria-label="Sair"
-              disabled={loggingOut}
-              onClick={() => void signOut()}
-            >
-              <LogOut size={18} aria-hidden="true" />
-            </Button>
+                <small>Uso neste computador, sem login</small>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <Link to="/perfil">
+                    <strong>{user?.name}</strong>
+                  </Link>
+                  <small>{user?.role_codes.join(', ')}</small>
+                </div>
+                <Button
+                  variant="ghost"
+                  iconOnly
+                  aria-label="Sair"
+                  disabled={loggingOut}
+                  onClick={() => void signOut()}
+                >
+                  <LogOut size={18} aria-hidden="true" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </aside>
@@ -187,9 +198,11 @@ export function AppShell() {
               >
                 <Navigation onNavigate={() => setMobileOpen(false)} />
                 <ThemeSelect />
-                <Button variant="secondary" disabled={loggingOut} onClick={() => void signOut()}>
-                  Sair da conta
-                </Button>
+                {!local && (
+                  <Button variant="secondary" disabled={loggingOut} onClick={() => void signOut()}>
+                    Sair da conta
+                  </Button>
+                )}
               </Modal>
             </div>
             <nav aria-label="Breadcrumb">

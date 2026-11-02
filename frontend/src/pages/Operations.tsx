@@ -183,9 +183,11 @@ function Renewals() {
   const can = useContractPermissions()
   const renewable = useContracts(active)
   const renewals = useContracts([''], 'RENOVACAO')
+  // Requests come from the customer portal, which the local edition does not have.
+  const { local } = useAuth()
   return (
     <>
-      <RenewalRequests />
+      {!local && <RenewalRequests />}
       <ContractsCard
         title="Contratos que podem ser renovados"
         description="Ativos, vencendo e vencidos. A renovação cria o próximo número da cadeia (9193 → 9193.1)."
