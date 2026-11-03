@@ -266,9 +266,17 @@ def update_role(
 
 
 @router.get("/audit-logs", dependencies=[Depends(require("audit.read"))])
-def audit_logs(db: DB, offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+def audit_logs(
+    db: DB,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    station_id: str | None = Query(None, max_length=36),
+):
+    query = select(AuditLog)
+    if station_id:
+        query = query.where(AuditLog.station_id == station_id)
     return {
-        "total": db.scalar(select(func.count()).select_from(AuditLog)),
+        "total": db.scalar(select(func.count()).select_from(query.subquery())),
         "items": [
             {
                 "id": a.id,
@@ -279,9 +287,8 @@ def audit_logs(db: DB, offset: int = Query(0, ge=0), limit: int = Query(20, ge=1
                 "entity": a.entity,
                 "entity_id": a.entity_id,
                 "changes": a.changes,
+                "station_id": a.station_id,
             }
-            for a in db.scalars(
-                select(AuditLog).order_by(AuditLog.id.desc()).offset(offset).limit(limit)
-            )
+            for a in db.scalars(query.order_by(AuditLog.id.desc()).offset(offset).limit(limit))
         ],
     }

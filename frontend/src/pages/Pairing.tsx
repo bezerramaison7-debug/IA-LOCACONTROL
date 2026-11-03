@@ -37,7 +37,11 @@ export function Pairing() {
           onSubmit={(event) => {
             event.preventDefault()
             const next = {
-              name: name.trim() ? undefined : 'Dê um nome a este computador, como "Balcão 1".',
+              name: !name.trim()
+                ? 'Dê um nome a este computador, como "Balcão 1".'
+                : /^[\p{L}\p{N}_ .-]{1,40}$/u.test(name.trim())
+                  ? undefined
+                  : 'Use até 40 letras, números, espaços, ponto, hífen ou sublinhado.',
               code:
                 code.replace(/[^A-Za-z0-9]/g, '').length === 8
                   ? undefined
@@ -57,11 +61,11 @@ export function Pairing() {
         >
           <Field
             label="Nome desta estação"
-            maxLength={60}
+            maxLength={40}
             autoComplete="off"
             value={name}
             error={errors.name}
-            hint="Aparece na lista de estações e na auditoria, por exemplo Balcão 1 ou Depósito."
+            hint="Aparece na lista de estações e na auditoria, por exemplo Balcão 1 ou Depósito. Até 40 caracteres; não pode repetir o nome de outra estação ativa."
             onChange={(e) => setName(e.target.value)}
           />
           <Field

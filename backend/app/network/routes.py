@@ -48,7 +48,9 @@ Principal = Annotated[None, Depends(principal_only)]
 
 class PairInput(Input):
     code: str = Field(min_length=4, max_length=20)
-    name: str = Field(min_length=1, max_length=60)
+    # Letters, digits, spaces and - _ . only (M4): no parentheses imitating another station's
+    # code in the audit, no control characters. 40 keeps the audit label within 100 characters.
+    name: str = Field(min_length=1, max_length=40, pattern=r"^[\w .\-]+$")
 
 
 @router.post("/pair", status_code=201, dependencies=[Depends(local_only), Depends(network_on)])
@@ -66,6 +68,7 @@ def pair(payload: PairInput, request: Request, response: Response, db: DB):
             entity="stations",
             entity_id=station["id"],
             changes={"name": station["name"], "address": peer},
+            station_id=station["id"],
         )
     )
     set_station_cookie(response, request.app.state.settings, token)
@@ -148,10 +151,10 @@ def activity(station_id: str, request: Request, db: DB, user: CurrentUser, _: Pr
     station = registry.get(station_id)
     if station is None:
         raise HTTPException(404, "Estação não encontrada.")
-    marker = f"({station_id[:8]})"
+    # By the structured station id (M4), never by the text of the label.
     rows = db.scalars(
         select(AuditLog)
-        .where(AuditLog.actor_label.contains(marker))
+        .where(AuditLog.station_id == station_id)
         .order_by(AuditLog.id.desc())
         .limit(100)
     )

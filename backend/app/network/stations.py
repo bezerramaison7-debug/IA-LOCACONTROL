@@ -347,6 +347,14 @@ class StationRegistry:
                         else "O código foi cancelado; gere um novo no computador principal."
                     ),
                 )
+            # Only with a valid code (no probing of names), and the code stays usable.
+            if any(
+                s["name"].casefold() == name.casefold() and not s["revoked_at"]
+                for s in data["stations"]
+            ):
+                raise HTTPException(
+                    409, f'Já existe uma estação ativa chamada "{name}". Escolha outro nome.'
+                )
             token = secrets.token_urlsafe(32)
             station = {
                 "id": str(uuid.uuid4()),

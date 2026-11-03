@@ -52,6 +52,7 @@ class IdentityService:
                 entity=entity,
                 entity_id=str(entity_id) if entity_id is not None else None,
                 changes=changes or {},
+                station_id=(self.db.info.get("station") or {}).get("id"),
             )
         )
 
