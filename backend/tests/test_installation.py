@@ -35,6 +35,17 @@ def revision(database: Path) -> str:
 # ---- configuration ---------------------------------------------------------------------
 
 
+def test_env_written_by_the_installer_with_a_bom_is_read(data_dir, monkeypatch):
+    """Inno Setup grava o .env em UTF-8 com BOM; o python-dotenv o descarta (contrato daqui)."""
+    monkeypatch.delenv("LOCACONTROL_NETWORK_MODE", raising=False)
+    data_dir.mkdir(parents=True)
+    (data_dir / ".env").write_bytes(
+        b"\xef\xbb\xbfLOCACONTROL_LOCAL_MODE=true\r\nLOCACONTROL_NETWORK_MODE=true\r\n"
+    )
+    settings = Settings()
+    assert settings.local_mode is True and settings.network_mode is True
+
+
 def test_data_dir_moves_every_persistent_default(data_dir):
     settings = Settings(_env_file=None)
     assert settings.database_url == f"sqlite:///{(data_dir / 'locacontrol.db').as_posix()}"

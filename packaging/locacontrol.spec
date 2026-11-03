@@ -1,5 +1,5 @@
 # ruff: noqa: F821 - Analysis, PYZ, EXE, COLLECT and SPECPATH are injected by PyInstaller.
-# PyInstaller spec of the LocaControl server (P1-B packaging proof). Build: scripts\package.ps1
+# PyInstaller spec of LocaControl.exe (P1-B proof, P1-E installer). Build: scripts\package.ps1
 # Output: one folder (dist-app\LocaControl\LocaControl.exe + _internal\), ignored by Git.
 # Resources keep their project layout under _internal, where app.core.config.resource() finds them.
 from pathlib import Path
@@ -22,7 +22,8 @@ datas = [
 ]
 
 a = Analysis(
-    [str(BACKEND / "app" / "server.py")],
+    # One executable, several verbs (abrir, servir, conectar, desconectar, parar): app.launcher.
+    [str(BACKEND / "app" / "launcher.py")],
     pathex=[str(BACKEND)],
     datas=datas,
     # Routers and models are imported dynamically by the migrations' env.py.
@@ -36,9 +37,8 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="LocaControl",
-    # shortcut: console window kept for the proof; the installer (P1-E) needs a windowed build
-    # with its own log file, because uvicorn writes to stdout/stderr.
-    console=True,
+    # Windowed (P1-E): no console window; `servir` writes to <data>\logs\servidor.log.
+    console=False,
     upx=False,
 )
 coll = COLLECT(exe, a.binaries, a.datas, upx=False, name="LocaControl")
