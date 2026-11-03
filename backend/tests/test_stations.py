@@ -347,3 +347,16 @@ def test_server_listens_on_the_network_only_in_the_network_mode():
     assert listen_address(settings(local_mode=True)) == "127.0.0.1"
     assert listen_address(settings(network_mode=True)) == "127.0.0.1"  # exige a edição local
     assert listen_address(settings(local_mode=True, network_mode=True)) == "0.0.0.0"
+
+
+def test_main_computer_guard_fails_closed_without_identification():
+    from starlette.requests import Request
+
+    from app.network.stations import principal_only
+
+    request = Request({"type": "http", "headers": [], "state": {}})
+    with pytest.raises(Exception) as refused:
+        principal_only(request)
+    assert refused.value.status_code == 403
+    request.state.station = None
+    principal_only(request)  # computador principal identificado: liberado

@@ -116,8 +116,12 @@ def station_request(request: Request) -> bool:
 
 
 def principal_only(request: Request):
-    """Route guard after authentication: refuses a station (decision of the user)."""
-    if getattr(request.state, "station", None):
+    """Route guard after authentication: refuses a station (decision of the user).
+
+    Declared after the user dependency, which records who is calling; if that has not run,
+    it fails closed instead of treating the caller as the main computer.
+    """
+    if not hasattr(request.state, "station") or request.state.station:
         raise HTTPException(403, PRINCIPAL_ONLY)
 
 
