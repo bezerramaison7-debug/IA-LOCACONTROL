@@ -146,7 +146,13 @@ function Assert-DataAcl([string]$Label, [bool]$WithService = $true) {
     }
 }
 function Assert-Service([string]$Label) {
-    $svc = Get-CimInstance Win32_Service -Filter "Name='$Service'"
+    # RUNNING só depois que os dois listeners (HTTP local e HTTPS da loja) aceitam conexões; o
+    # /health já responde um instante antes, ainda em START_PENDING.
+    for ($i = 0; $i -lt 60; $i++) {
+        $svc = Get-CimInstance Win32_Service -Filter "Name='$Service'"
+        if (-not $svc -or $svc.State -eq 'Running') { break }
+        Start-Sleep -Milliseconds 500
+    }
     Assert ($svc) "serviço $Service instalado ($Label)"
     Assert ($svc.StartName -eq "NT SERVICE\$Service") "serviço com identidade própria: $($svc.StartName) ($Label)"
     Assert ($svc.State -eq 'Running') "serviço em execução ($Label)"
