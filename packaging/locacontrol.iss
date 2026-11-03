@@ -269,6 +269,10 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
+  { Em modo silencioso o Inno também chama esta função; recusar aqui repetiria a página para
+    sempre. A falha da estação sai pelo código 20 (GetCustomSetupExitCode). }
+  if WizardSilent then
+    Exit;
   if (CurPageID = StationPage.ID) and ((ServerAddress('') = '') or not CodeLooksValid(StationPage.Values[1])) then
   begin
     MsgBox('Informe o endereço do computador principal e o código de pareamento completo ' +
