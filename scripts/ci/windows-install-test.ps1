@@ -49,7 +49,9 @@ function Session([int]$Port = 8000) {
     return @{ Web = $web; Headers = $headers; Port = $Port }
 }
 function Post($S, [string]$Path, $Body = $null) {
-    $json = if ($null -ne $Body) { [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 5)) } else { $null }
+    # Atribuição direta: "$x = if (...) { bytes }" desenrola o byte[] num object[] (não é JSON).
+    $json = $null
+    if ($null -ne $Body) { $json = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 5)) }
     return Invoke-RestMethod "http://127.0.0.1:$($S.Port)$Path" -Method Post -Body $json -ContentType 'application/json; charset=utf-8' -Headers $S.Headers -WebSession $S.Web
 }
 function Rule-Exists { (netsh advfirewall firewall show rule name="$Rule") -match 'LocalSubnet' }

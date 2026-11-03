@@ -85,7 +85,9 @@ def test_connect_tells_the_installer_exactly_what_happened(data_dir, monkeypatch
     monkeypatch.setattr(connect, "connect", refuse)
     arguments = ["conectar", "--servidor", "192.168.0.10", "--codigo", "X", "--resultado"]
     assert launcher.main([*arguments, str(result)]) == launcher.EXIT_CONNECT_FAILED
-    lines = result.read_text(encoding="utf-8-sig").splitlines()
+    raw = result.read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbfERRO\r\n") and b"\r\r" not in raw  # Inno lê assim
+    lines = raw.decode("utf-8-sig").split("\r\n")
     assert lines[0] == "ERRO" and "NÃO confere" in lines[1] and lines[2] == ""
 
     def crash(*_args, **_kwargs):

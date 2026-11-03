@@ -77,6 +77,7 @@ def env(data_dir: Path, **extra) -> dict:
     return {
         **os.environ,
         "PYTHONPATH": str(PROJECT_ROOT / "backend"),
+        "PYTHONUTF8": "1",  # mensagens do servidor em UTF-8 também no Windows (cp1252)
         "LOCACONTROL_DATA_DIR": str(data_dir),
         **extra,
     }

@@ -211,7 +211,7 @@ def write_result(path: Path, ok: bool, message: str, url: str = ""):
     pairing address. UTF-8 with BOM, which Inno Setup reads as UTF-8."""
     text = "\r\n".join(["OK" if ok else "ERRO", " ".join(message.split()), url]) + "\r\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8-sig")
+    path.write_bytes(text.encode("utf-8-sig"))  # bytes: no "\r\r\n" from text mode on Windows
 
 
 def disconnect(root: Path | None = None, untrust=None) -> bool:
