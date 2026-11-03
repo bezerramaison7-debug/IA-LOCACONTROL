@@ -5,11 +5,13 @@ exchanges the temporary code shown on the main computer for the station's own cr
 Everything else here is for the main computer only (decision of the user, 2026-11-02).
 """
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import Field
 from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
 
 from app.auth.dependencies import DB, CurrentUser
 from app.auth.local import installation
@@ -27,6 +29,28 @@ from app.network.stations import (
 )
 
 router = APIRouter(prefix="/api/stations", tags=["Rede local e estações"])
+
+
+def record_reuse(engine, reuse: dict):
+    """Audits a detected credential reuse (A1) in its own transaction: the request that revealed
+    it was refused, so its transaction was rolled back."""
+    station = reuse["station"]
+    try:
+        with Session(engine) as db:
+            db.add(
+                AuditLog(
+                    actor_id=None,
+                    actor_label=station_label(station),
+                    action="station.reuse_detected",
+                    entity="stations",
+                    entity_id=station["id"],
+                    changes={k: reuse[k] for k in ("peer", "agent", "last_address")},
+                    station_id=station["id"],
+                )
+            )
+            db.commit()
+    except Exception:  # noqa: BLE001 — the registry already holds the event
+        logging.getLogger(__name__).exception("Falha ao auditar o reuso de credencial.")
 
 
 def local_only(request: Request):

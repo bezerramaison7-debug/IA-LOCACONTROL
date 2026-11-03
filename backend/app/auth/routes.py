@@ -86,8 +86,6 @@ def open_local_session(
         "local_session.opened", "users", user.id, {"station_id": station["id"]} if station else {}
     )
     set_session_cookie(response, settings, token)
-    if station:
-        set_station_cookie(response, settings, request.cookies[STATION_COOKIE])
     return token, user
 
 
@@ -115,9 +113,18 @@ def me(request: Request, response: Response, db: DB):
         station = None
         if not is_this_computer(request):
             peer = peer_address(request)
-            station = station_request(request) and request.app.state.stations.authenticate(
-                request.cookies.get(STATION_COOKIE), str(peer) if peer else None
-            )
+            station = None
+            if station_request(request):
+                # A new session always offers a new station token (A1).
+                check = request.app.state.stations.authenticate(
+                    request.cookies.get(STATION_COOKIE),
+                    str(peer) if peer else None,
+                    request.headers.get("user-agent", ""),
+                    rotate_now=True,
+                )
+                station = check.station
+                request.state.station_rotate = check.rotate
+                request.state.station_reuse = check.reuse
             if not station:
                 # Tells a computer of the store network that it can be paired (ADR-025).
                 pairable = from_store_network(request) and store_host(request)

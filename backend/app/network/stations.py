@@ -20,6 +20,7 @@ import socket
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException, Request
@@ -42,6 +43,18 @@ PEER_WINDOW_SECONDS = 15 * 60
 EVENT_LIMIT = 500
 # last_seen is written at most this often per station, not at every request.
 SEEN_EVERY_SECONDS = 60
+# Token rotation (A1): a new token is offered at a new session and after this long in use.
+ROTATE_SECONDS = 15 * 60
+# An offered token not used yet (its response may have been lost) makes the server offer another
+# after this long; up to PENDING_KEPT offered tokens stay valid until one of them is used, so an
+# idle browser holding an older offer is never locked out.
+PENDING_SECONDS = 10 * 60
+PENDING_KEPT = 3
+# A retired token presented within this window is a request already in flight or another tab
+# of the same browser, not a copy: accepted, never treated as reuse.
+GRACE_SECONDS = 120
+RETIRED_KEPT = 20
+REUSE_REASON = "reuso de credencial detectado"
 PRIVATE_NETWORKS = [
     ipaddress.ip_network(n)
     for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7", "fe80::/10")
@@ -128,6 +141,16 @@ def principal_only(request: Request):
         raise HTTPException(403, PRINCIPAL_ONLY)
 
 
+@dataclass
+class Check:
+    """Result of presenting a station token: the station (or None), a new token to hand over
+    (rotation) and, on detected reuse, the evidence to audit."""
+
+    station: dict | None = None
+    rotate: str | None = None
+    reuse: dict | None = None
+
+
 UNAVAILABLE = (
     "A lista de estações está ilegível: as estações estão bloqueadas até o reparo no computador "
     "principal (Gestão → Estações da rede). Os dados da loja não foram afetados."
@@ -165,9 +188,18 @@ class StationRegistry:
     never starts empty on its own, which would silently undo revocations.
     """
 
-    def __init__(self, path: Path):
+    def __init__(
+        self,
+        path: Path,
+        rotate_seconds: int = ROTATE_SECONDS,
+        grace_seconds: int = GRACE_SECONDS,
+        clock=time.time,
+    ):
         self.path = Path(path)
         self.backup = self.path.with_name(self.path.name + ".bak")
+        self.rotate_seconds = rotate_seconds
+        self.grace_seconds = grace_seconds
+        self.clock = clock
         self.lock = threading.RLock()
         self._cache: dict | None = None
         self.unavailable = False
@@ -209,7 +241,7 @@ class StationRegistry:
                 raise RegistryUnavailable()
             else:
                 data = {}  # first run
-        data.setdefault("server", {"id": str(uuid.uuid4()), "created_at": int(time.time())})
+        data.setdefault("server", {"id": str(uuid.uuid4()), "created_at": int(self.clock())})
         data.setdefault("stations", [])
         data.setdefault("pairing", None)
         data.setdefault("failures", {})
@@ -250,7 +282,7 @@ class StationRegistry:
             return data["server"]
 
     def _event(self, data: dict, action: str, station: dict | None = None, **extra):
-        entry = {"at": int(time.time()), "action": action, **extra}
+        entry = {"at": int(self.clock()), "action": action, **extra}
         if station:
             entry |= {"station_id": station["id"], "station_name": station["name"]}
         data["events"] = ([entry] + data["events"])[:EVENT_LIMIT]
@@ -276,7 +308,7 @@ class StationRegistry:
         with self.lock:
             data = self._load()
             code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
-            now = int(time.time())
+            now = int(self.clock())
             data["pairing"] = {
                 "code_hash": digest(code),
                 "created_at": now,
@@ -302,7 +334,7 @@ class StationRegistry:
     def pairing(self) -> dict | None:
         with self.lock:
             current = self._load()["pairing"]
-            if not current or current["expires_at"] <= time.time():
+            if not current or current["expires_at"] <= self.clock():
                 return None
             return {
                 "expires_at": current["expires_at"],
@@ -313,7 +345,7 @@ class StationRegistry:
         """Exchanges a valid code for a station and its own token (shown once, kept hashed)."""
         with self.lock:
             data = self._load()
-            now = int(time.time())
+            now = int(self.clock())
             failures = {
                 key: [t for t in times if now - t < PEER_WINDOW_SECONDS]
                 for key, times in data["failures"].items()
@@ -360,6 +392,10 @@ class StationRegistry:
                 "id": str(uuid.uuid4()),
                 "name": name,
                 "token_hash": digest(token),
+                "token_issued_at": now,
+                "pending": [],
+                "retired": [],
+                "revoked_reason": None,
                 "paired_at": now,
                 "paired_from": peer,
                 "last_seen_at": now,
@@ -379,32 +415,103 @@ class StationRegistry:
 
     # ---- stations ------------------------------------------------------------------
 
-    def authenticate(self, token: str | None, peer: str | None = None) -> dict | None:
-        """The active station owning this token, or None (unknown, revoked, malformed)."""
+    def authenticate(
+        self,
+        token: str | None,
+        peer: str | None = None,
+        agent: str = "",
+        rotate_now: bool = False,
+    ) -> "Check":
+        """Who owns this token, with token rotation and reuse detection (A1).
+
+        - current token: accepted; a new *pending* token is offered at a new session
+          (`rotate_now`) or when the current one is older than `rotate_seconds`;
+        - pending token: accepted and promoted; the previous one is retired;
+        - retired token within `grace_seconds`: accepted (in-flight request, another tab);
+        - retired token after that: **reuse** — someone else holds a copy. The station is
+          revoked ("reuso de credencial detectado") and the event recorded;
+        - anything else, or a revoked station: refused.
+
+        This detects a copied credential once both copies are used after a rotation; it does not
+        prevent the copy from working until then.
+        """
         if not token or len(token) > 100:
-            return None
+            return Check()
         hashed = digest(token)
         with self.lock:
             try:
                 data = self._load()
             except RegistryUnavailable:
-                return None  # fail closed: no station is accepted while the list is unreadable
+                return Check()  # fail closed: no station is accepted while the list is unreadable
+            now = int(self.clock())
             for station in data["stations"]:
-                if hmac.compare_digest(station["token_hash"], hashed):
-                    if station["revoked_at"]:
-                        return None
-                    now = int(time.time())
-                    if peer and (
-                        now - station["last_seen_at"] >= SEEN_EVERY_SECONDS
-                        or station["last_address"] != peer
-                    ):
-                        station["last_seen_at"], station["last_address"] = now, peer
-                        try:
-                            self._save(data)
-                        except OSError:
-                            logger.warning("Não foi possível registrar o acesso da estação.")
-                    return public(station)
+                match = self._match(station, hashed, now)
+                if match is None:
+                    continue
+                if station["revoked_at"]:
+                    return Check()
+                changed, rotate = False, None
+                if match == "reuse":
+                    return self._reuse(data, station, now, peer, agent)
+                if match == "pending":
+                    # The browser stored the offered token: it becomes the current one; the
+                    # previous current one and the other offers are retired.
+                    offers = station.get("pending", [])
+                    used = next(o for o in offers if hmac.compare_digest(o["hash"], hashed))
+                    retired = [{"hash": station["token_hash"], "retired_at": now}] + [
+                        {"hash": o["hash"], "retired_at": now} for o in offers if o is not used
+                    ]
+                    station["retired"] = (retired + station.get("retired", []))[:RETIRED_KEPT]
+                    station["token_hash"], station["token_issued_at"] = used["hash"], used["at"]
+                    station["pending"] = []
+                    changed = True
+                elif match == "current":
+                    offers = station.setdefault("pending", [])
+                    newest = max((o["at"] for o in offers), default=None)
+                    age = now - station.get("token_issued_at", station["paired_at"])
+                    due = (not offers and (rotate_now or age >= self.rotate_seconds)) or (
+                        offers and now - newest >= PENDING_SECONDS
+                    )
+                    if due:
+                        rotate = secrets.token_urlsafe(32)
+                        offers.append({"hash": digest(rotate), "at": now})
+                        station["pending"] = offers[-PENDING_KEPT:]
+                        changed = True
+                if peer and (
+                    now - station["last_seen_at"] >= SEEN_EVERY_SECONDS
+                    or station["last_address"] != peer
+                ):
+                    station["last_seen_at"], station["last_address"] = now, peer
+                    changed = True
+                if changed:
+                    try:
+                        self._save(data)
+                    except OSError:
+                        if rotate or match == "pending":
+                            raise
+                        logger.warning("Não foi possível registrar o acesso da estação.")
+                return Check(station=public(station), rotate=rotate)
+        return Check()
+
+    def _match(self, station: dict, hashed: str, now: int) -> str | None:
+        if hmac.compare_digest(station["token_hash"], hashed):
+            return "current"
+        if any(hmac.compare_digest(o["hash"], hashed) for o in station.get("pending", [])):
+            return "pending"
+        for retired in station.get("retired", []):
+            if hmac.compare_digest(retired["hash"], hashed):
+                return "grace" if now - retired["retired_at"] <= self.grace_seconds else "reuse"
         return None
+
+    def _reuse(self, data, station, now, peer, agent) -> "Check":
+        station["revoked_at"] = now
+        station["revoked_reason"] = REUSE_REASON
+        station["pending"] = []
+        evidence = {"peer": peer, "agent": agent[:200], "last_address": station["last_address"]}
+        self._event(data, "station.reuse_detected", station, **evidence)
+        self._save(data)
+        logger.error("Reuso de credencial da estação %s detectado (%s).", station["id"], peer)
+        return Check(reuse={"station": public(station), **evidence})
 
     def get(self, station_id: str) -> dict | None:
         with self.lock:
@@ -423,7 +530,8 @@ class StationRegistry:
             for station in data["stations"]:
                 if station["id"] == station_id:
                     if not station["revoked_at"]:
-                        station["revoked_at"] = int(time.time())
+                        station["revoked_at"] = int(self.clock())
+                        station["revoked_reason"] = "revogada no computador principal"
                         self._event(data, "station.revoked", station)
                         self._save(data)
                     return public(station)
@@ -442,8 +550,11 @@ class StationRegistry:
         return events[:limit]
 
 
+SECRET_FIELDS = {"token_hash", "pending", "retired"}
+
+
 def public(station: dict) -> dict:
-    return {key: value for key, value in station.items() if key != "token_hash"}
+    return {key: value for key, value in station.items() if key not in SECRET_FIELDS}
 
 
 def station_label(station: dict) -> str:
@@ -458,5 +569,11 @@ def registry_for(settings) -> "StationRegistry":
 
     url = resolve_database_url(settings.database_url)
     if url.get_backend_name() == "sqlite" and url.database not in (None, "", ":memory:"):
-        return StationRegistry(Path(url.database).parent / REGISTRY_FILE)
-    return StationRegistry(data_root() / REGISTRY_FILE)
+        folder = Path(url.database).parent
+    else:
+        folder = data_root()
+    return StationRegistry(
+        folder / REGISTRY_FILE,
+        rotate_seconds=settings.station_token_rotate_seconds,
+        grace_seconds=settings.station_token_grace_seconds,
+    )

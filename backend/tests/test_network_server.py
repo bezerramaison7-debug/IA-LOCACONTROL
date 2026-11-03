@@ -104,7 +104,7 @@ class Browser:
 
 
 class Server:
-    def __init__(self, data: Path, port: int):
+    def __init__(self, data: Path, port: int, **extra):
         self.data, self.port, self.process = data, port, None
         self.env = {
             **os.environ,
@@ -115,6 +115,7 @@ class Server:
             "LOCACONTROL_STATION_NETWORKS": json.dumps([f"{ADDRESS}/32"]),
             "LOCACONTROL_BACKUP_SCHEDULER": "false",
             "PYTHONPATH": str(PROJECT_ROOT / "backend"),
+            **extra,
         }
         for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
             self.env.pop(key, None)
@@ -453,3 +454,53 @@ def test_the_server_uses_the_controlled_business_date(store):
         assert status == 201, body
         states[days] = principal.call("GET", f"/api/contracts/{confirmed['id']}")[1]["status"]
     assert states == {2: "VENCENDO", 10: "ATIVO"}
+
+
+def pair_station(principal, server, name):
+    status, code = principal.call("POST", "/api/stations/pairing")
+    assert status == 201, code
+    station = Browser(f"http://{ADDRESS}:{server.port}")
+    status, body = station.call("POST", "/api/stations/pair", {"code": code["code"], "name": name})
+    assert status == 201, body
+    station.enter()
+    return station
+
+
+def test_a_copied_credential_is_detected_on_the_real_server():
+    """A1 end to end: real server, independent clients, real cookies. Short rotation and grace
+    (1 s) instead of 15 min and 2 min, so the test runs in seconds."""
+    root = PROJECT_ROOT / ".test-tmp" / f"rede-clone-{uuid4().hex}"
+    root.mkdir(parents=True)
+    server = Server(
+        root / "dados",
+        free_port(),
+        LOCACONTROL_STATION_TOKEN_ROTATE_SECONDS="1",
+        LOCACONTROL_STATION_TOKEN_GRACE_SECONDS="1",
+    )
+    server.start()
+    try:
+        principal = Browser(f"http://127.0.0.1:{server.port}")
+        principal.enter()
+        legit = pair_station(principal, server, "Balcão")
+        assert legit.call("GET", "/api/customers")[0] == 200
+        clone = Browser(legit.base)
+        for cookie in legit.jar:
+            clone.jar.set_cookie(cookie)
+        clone.csrf = legit.csrf
+        assert clone.call("GET", "/api/customers")[0] == 200  # antes da rotação, funciona
+        # Both copies keep being used; whichever presents a retired token after the grace
+        # period reveals the copy (the order depends on who receives the new token first).
+        for _ in range(4):
+            time.sleep(1.2)
+            legit.call("GET", "/api/customers")
+            clone.call("GET", "/api/customers")
+        assert legit.call("GET", "/api/customers")[0] == 401
+        assert clone.call("GET", "/api/customers")[0] == 401
+        status, stations = principal.call("GET", "/api/stations")
+        assert stations["stations"][0]["revoked_reason"] == "reuso de credencial detectado"
+        station_id = stations["stations"][0]["id"]
+        status, audit = principal.call("GET", f"/api/audit-logs?station_id={station_id}&limit=100")
+        assert "station.reuse_detected" in [item["action"] for item in audit["items"]]
+    finally:
+        server.stop()
+        shutil.rmtree(root, ignore_errors=True)

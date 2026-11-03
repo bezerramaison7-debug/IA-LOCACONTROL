@@ -119,7 +119,8 @@ def test_station_pairs_with_the_temporary_code_and_gets_its_own_credential(netwo
     done = station.pair(code.lower().replace("-", " "), "Balcão 1")  # digitação tolerante
     assert done.status_code == 201, done.text
     assert done.cookies.get(STATION_COOKIE)
-    assert "token" not in json.dumps(done.json())
+    assert done.cookies.get(STATION_COOKIE) not in json.dumps(done.json())
+    assert "token_hash" not in json.dumps(done.json())
     assert station.pair(code, "Balcão 2").status_code == 403  # código de uso único
 
     me = station.me()

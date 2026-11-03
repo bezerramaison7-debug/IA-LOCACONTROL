@@ -56,9 +56,15 @@ def bound_station(request: Request, session: AuthSession) -> dict | None:
         return None
     if session.station_id:
         peer = peer_address(request)
-        station = request.app.state.stations.authenticate(
-            request.cookies.get(STATION_COOKIE), str(peer) if peer else None
+        check = request.app.state.stations.authenticate(
+            request.cookies.get(STATION_COOKIE),
+            str(peer) if peer else None,
+            request.headers.get("user-agent", ""),
         )
+        # Read by the middleware once the request's own transaction is over (A1).
+        request.state.station_rotate = check.rotate
+        request.state.station_reuse = check.reuse
+        station = check.station
         if not station or station["id"] != session.station_id or not from_store_network(request):
             raise HTTPException(401, NOT_PAIRED)
         return station

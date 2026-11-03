@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     station_networks: list[str] = []
     # Names by which stations reach this server besides IP literals and this computer's name.
     station_hosts: list[str] = []
+    # Station token rotation (A1): a new token after this long in use (and at every new session).
+    station_token_rotate_seconds: int = Field(default=900, ge=1, le=86_400)
+    # A retired token is still accepted this long (requests in flight, other tabs) before its
+    # use counts as reuse of a copied credential.
+    station_token_grace_seconds: int = Field(default=120, ge=1, le=3_600)
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     allowed_origins: list[str] = [
         "http://localhost:8000",
