@@ -9,16 +9,20 @@ test('network: pairing a station, its limits and the revocation', async ({ page,
   const station = await context.newPage()
   await station.goto('/#/')
   await expect(heading(station, 'Conectar este computador à loja')).toBeVisible()
+  // Página servida por HTTPS: nenhum aviso de conexão insegura.
+  expect(station.url()).toMatch(/^https:/)
+  await expect(station.getByText('Esta conexão não é segura.')).toHaveCount(0)
   await expect(station.getByLabel('Senha')).toHaveCount(0)
 
   await page.goto('/#/estacoes')
   await expect(heading(page, 'Estações da rede')).toBeVisible()
   await page.getByRole('button', { name: 'Gerar código de pareamento' }).click()
   const code = ((await page.locator('.pairing-code').textContent()) || '').trim()
-  expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/)
+  // 26 caracteres (130 bits), em grupos de 4 (P1-E).
+  expect(code).toMatch(/^([A-Z0-9]{4}-){6}[A-Z0-9]{2}$/)
 
   await station.getByLabel('Nome desta estação').fill('Balcão E2E')
-  await station.getByLabel('Código de pareamento').fill('ZZZZ-ZZZZ')
+  await station.getByLabel('Código de pareamento').fill('ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZ')
   await station.getByRole('button', { name: 'Conectar à loja' }).click()
   await expect(station.getByText(/Código incorreto/)).toBeVisible()
   await station.getByLabel('Código de pareamento').fill(code)

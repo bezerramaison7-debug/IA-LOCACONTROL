@@ -1,6 +1,6 @@
 # LocaControl — Estudo do HTTPS local (P1-E)
 
-Estudo pedido pela diretiva do arquiteto de 2026-11-03, que aprovou o HTTPS para o P1-E com **autoridade certificadora (CA) local por instalação**, certificados de servidor e provisionamento seguro das estações, **sem confiar na CA antes de uma verificação independente da sua identidade**. Nada disto está implementado; o P1-D continua em HTTP na rede privada, com o risco reafirmado na ADR-025.
+Estudo pedido pela diretiva do arquiteto de 2026-11-03, que aprovou o HTTPS para o P1-E com **autoridade certificadora (CA) local por instalação**, certificados de servidor e provisionamento seguro das estações, **sem confiar na CA antes de uma verificação independente da sua identidade**. > **Substituído pela implementação do P1-E** (ADR-026, `docs/P1E_PROPOSTA.md`). Diferenças em relação a este estudo: código de pareamento de 26 caracteres (130 bits) em vez de ampliar o de 8; prova da CA por `HMAC-SHA256(código, CA)`; confiança instalada pelo `LocaControl.exe conectar` (instalador "Conectar à loja"). Este texto fica como registro do estudo.
 
 ## 1. Objetivo e limites
 

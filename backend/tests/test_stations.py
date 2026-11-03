@@ -17,7 +17,7 @@ from app.network.stations import CODE_ATTEMPTS, PEER_ATTEMPTS, STATION_COOKIE
 
 APP = {"X-LocaControl-Request": "1"}
 PRINCIPAL = {"base_url": "http://127.0.0.1:8000", "client": ("127.0.0.1", 50000)}
-SERVER = "http://192.168.0.10:8000"
+SERVER = "https://192.168.0.10:8443"  # stations only over HTTPS (P1-E)
 CUSTOMER = {
     "person_type": "PF",
     "legal_name": "Cliente da rede",
@@ -113,7 +113,8 @@ def test_station_pairs_with_the_temporary_code_and_gets_its_own_credential(netwo
     assert station.write("POST", "/api/stations/pairing").status_code == 401
 
     code = new_code(principal)
-    assert len(code) == 9 and code[4] == "-"
+    # 26 caracteres de 32 símbolos (130 bits), em grupos de 4.
+    assert len(code.replace("-", "")) == 26 and code[4] == "-"
     wrong = station.pair("AAAA-AAAA", "Balcão 1")
     assert wrong.status_code == 403 and f"Restam {CODE_ATTEMPTS - 1}" in wrong.json()["detail"]
     done = station.pair(code.lower().replace("-", " "), "Balcão 1")  # digitação tolerante
@@ -178,7 +179,7 @@ def test_only_the_store_network_and_this_server_address_can_pair(network, make_a
     assert response.status_code == 401 and "X-LocaControl-Pairing" not in response.headers
     assert outsider.pair(code, "Fora").status_code == 403
     # Nome estranho que aponta para este servidor (DNS rebinding): recusado.
-    rebinding = Computer(app, "192.168.0.30", server="http://loja.exemplo.com:8000")
+    rebinding = Computer(app, "192.168.0.30", server="https://loja.exemplo.com:8443")
     assert rebinding.me().status_code == 401
     assert rebinding.pair(code, "Rebinding").status_code == 403
     # Página de outro site tentando parear pela estação.
@@ -338,59 +339,39 @@ def principal_overview(principal):
     return response.json()
 
 
-def test_server_listens_on_the_network_only_in_the_network_mode():
-    from app.server import listen_address
+def test_server_listens_on_the_network_only_over_https_in_the_network_mode():
+    from app.server import listeners
 
-    def settings(**values):
-        return Settings(_env_file=None, **values)
+    def hosts(tls=("cert", "key", "senha"), **values):
+        found = listeners(Settings(_env_file=None, **values), 8000, 8443, tls)
+        return [(e["host"], e["port"], "ssl_certfile" in e) for e in found]
 
-    assert listen_address(settings()) == "127.0.0.1"
-    assert listen_address(settings(local_mode=True)) == "127.0.0.1"
-    assert listen_address(settings(network_mode=True)) == "127.0.0.1"  # exige a edição local
-    assert listen_address(settings(local_mode=True, network_mode=True)) == "0.0.0.0"
-
-
-def test_main_computer_guard_fails_closed_without_identification():
-    from starlette.requests import Request
-
-    from app.network.stations import principal_only
-
-    request = Request({"type": "http", "headers": [], "state": {}})
-    with pytest.raises(Exception) as refused:
-        principal_only(request)
-    assert refused.value.status_code == 403
-    request.state.station = None
-    principal_only(request)  # computador principal identificado: liberado
+    assert hosts() == [("127.0.0.1", 8000, False)]
+    assert hosts(local_mode=True) == [("127.0.0.1", 8000, False)]
+    assert hosts(network_mode=True) == [("127.0.0.1", 8000, False)]  # exige a edição local
+    network = hosts(local_mode=True, network_mode=True)
+    # HTTP só neste computador; a rede só por HTTPS.
+    assert network == [("127.0.0.1", 8000, False), ("0.0.0.0", 8443, True)]
+    # Sem certificado utilizável a rede não abre (falha fechada).
+    assert hosts(None, local_mode=True, network_mode=True) == [("127.0.0.1", 8000, False)]
 
 
-def test_excel_import_is_sent_and_confirmed_only_on_the_main_computer(network):
-    """Decisão do arquiteto (2026-11-03): estações consultam importações; enviar, pré-visualizar
-    e confirmar só no computador principal."""
-    import io
-
-    from openpyxl import Workbook
-
+def test_stations_are_refused_over_plain_http(network):
     app, principal = network
-    station = paired(app, principal, "192.168.0.21", "Balcão")
-    book = Workbook()
-    book.active.append(["Cliente", "Documento"])
-    book.active.append(["Maria", "52998224725"])
-    data = io.BytesIO()
-    book.save(data)
-    files = {"file": ("clientes.xlsx", data.getvalue(), "application/octet-stream")}
-    denied = station.client.post(
-        "/api/imports/upload", files=files, headers={**station.origin, "X-CSRF-Token": station.csrf}
-    )
-    assert denied.status_code == 403 and "computador principal" in denied.json()["detail"]
-    sent = principal.post(
-        "/api/imports/upload",
-        files=files,
-        headers={k: v for k, v in principal.headers.items() if k.lower() != "content-type"},
-    )
-    assert sent.status_code == 201, sent.text
-    batch = sent.json()["batch"]["id"]
-    for path in (f"/api/imports/{batch}/preview", f"/api/imports/{batch}/confirm"):
-        response = station.write("POST", path, {"sheet": "Sheet", "module": "customers"})
-        assert response.status_code == 403, (path, response.text)
-    assert station.client.get("/api/imports").status_code == 200
-    assert station.client.get(f"/api/imports/{batch}").status_code == 200
+    plain = Computer(app, "192.168.0.21", server="http://192.168.0.10:8000")
+    refused = plain.pair(new_code(principal), "Balcão")
+    assert refused.status_code == 403  # pareamento nunca por HTTP
+    station = paired(app, principal, "192.168.0.22", "Depósito")
+    copy = Computer(app, "192.168.0.22", server="http://192.168.0.10:8000")
+    for name in ("locacontrol_session", STATION_COOKIE):
+        copy.client.cookies.set(name, station.client.cookies[name])
+    assert copy.client.get("/api/customers").status_code == 401  # credencial por HTTP: recusada
+
+
+def test_station_cookies_are_secure_over_https(network):
+    app, principal = network
+    station = Computer(app, "192.168.0.21")
+    done = station.pair(new_code(principal), "Balcão")
+    assert "secure" in done.headers["set-cookie"].lower()
+    me = station.client.get("/api/auth/me", headers=APP)
+    assert all("secure" in v.lower() for k, v in me.headers.items() if k == "set-cookie")

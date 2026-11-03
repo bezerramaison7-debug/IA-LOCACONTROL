@@ -38,7 +38,10 @@ class BackupConfig(Input):
     # the absolute and the relative floor.
     max_total_gb: int = Field(default=10, ge=1, le=100_000)
     min_free_gb: int = Field(default=10, ge=0, le=100_000)
-    min_free_percent: int = Field(default=15, ge=0, le=90)
+    # Operational margin on top of the minimum reserve (P1-E): this % of the disk, at most
+    # margin_max_gb, never less than twice the database.
+    margin_percent: int = Field(default=5, ge=0, le=50)
+    margin_max_gb: int = Field(default=20, ge=0, le=100_000)
 
     @field_validator("directory", "mirror_directory")
     @classmethod

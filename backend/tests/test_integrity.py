@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import zipfile
 from pathlib import Path
@@ -494,16 +495,27 @@ def test_failure_in_migration_after_restore_is_undone(client, admin, base, monke
     assert client.get("/health").json()["status"] == "ok"
 
 
-OTHER_DISK = Path("/dev/shm")
+def other_disk() -> Path | None:
+    """Uma pasta em outro sistema de arquivos: tmpfs no Linux; no Windows, a pasta temporária
+    quando está em outra unidade (na CI, C: com o projeto em D:)."""
+    for candidate in (Path("/dev/shm"), Path(tempfile.gettempdir())):
+        try:
+            if candidate.is_dir() and candidate.stat().st_dev != PROJECT_ROOT.stat().st_dev:
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+OTHER_DISK = other_disk()
 
 
 @pytest.mark.skipif(
-    not OTHER_DISK.is_dir() or OTHER_DISK.stat().st_dev == PROJECT_ROOT.stat().st_dev,
-    reason="sem um segundo sistema de arquivos para simular outro disco",
+    OTHER_DISK is None, reason="sem um segundo sistema de arquivos para simular outro disco"
 )
 def test_restore_from_a_backup_folder_on_another_disk(client, admin, base):
-    """A pasta de backups em outro disco (aqui um tmpfs) restaura sem mover nada entre discos:
-    a preparação e as pastas substituídas ficam ao lado dos dados."""
+    """A pasta de backups em outro disco (tmpfs ou outra unidade) restaura sem mover nada entre
+    discos: a preparação e as pastas substituídas ficam ao lado dos dados."""
     person, item = base
     document(client, admin, person, item)
     settings = client.app.state.settings

@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -71,12 +72,15 @@ def cpf(seed: int) -> str:
 class Browser:
     """An independent HTTP client: own cookie jar, own address, never the system proxy."""
 
-    def __init__(self, base: str):
+    def __init__(self, base: str, cafile: Path | None = None):
         self.base = base
         self.jar = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(self.jar)
-        )
+        handlers = [urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(self.jar)]
+        if cafile:
+            # A real station: HTTPS verified against the store's CA, hostname/IP checked.
+            context = ssl.create_default_context(cafile=str(cafile))
+            handlers.append(urllib.request.HTTPSHandler(context=context))
+        self.opener = urllib.request.build_opener(*handlers)
         self.csrf = ""
 
     def call(self, method: str, path: str, body=None, timeout: float = 30):
@@ -106,6 +110,7 @@ class Browser:
 class Server:
     def __init__(self, data: Path, port: int, **extra):
         self.data, self.port, self.process = data, port, None
+        self.https_port = free_port()
         self.env = {
             **os.environ,
             "LOCACONTROL_DATA_DIR": str(data),
@@ -123,23 +128,49 @@ class Server:
     def start(self):
         log = (self.data.parent / "server.log").open("a", encoding="utf-8")
         self.process = subprocess.Popen(
-            [sys.executable, "-c", BOOT, "--port", str(self.port)],
+            [
+                sys.executable,
+                "-c",
+                BOOT,
+                "--port",
+                str(self.port),
+                "--https-port",
+                str(self.https_port),
+            ],
             cwd=PROJECT_ROOT,
             env=self.env,
             stdout=log,
             stderr=subprocess.STDOUT,
         )
         probe = Browser(f"http://127.0.0.1:{self.port}")
-        for _ in range(200):
+        for _ in range(300):
             if self.process.poll() is not None:
                 raise RuntimeError("o servidor encerrou ao iniciar; veja server.log")
             try:
-                if probe.call("GET", "/health", timeout=1)[0] == 200:
+                if probe.call("GET", "/health", timeout=1)[0] == 200 and self.https_open():
                     return
             except OSError:
                 pass
             time.sleep(0.1)
         raise RuntimeError("o servidor não respondeu")
+
+    def https_open(self) -> bool:
+        try:
+            with socket.create_connection((ADDRESS, self.https_port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    @property
+    def station_base(self) -> str:
+        return f"https://{ADDRESS}:{self.https_port}"
+
+    @property
+    def cafile(self) -> Path:
+        return self.data / "tls" / "ca.pem"
+
+    def station(self) -> "Browser":
+        return Browser(self.station_base, self.cafile)
 
     def stop(self, kill=False):
         if self.process and self.process.poll() is None:
@@ -168,7 +199,8 @@ def store():
             "mirror_directory": "",
             "max_total_gb": 10,
             "min_free_gb": 1,
-            "min_free_percent": 0,
+            "margin_percent": 0,
+            "margin_max_gb": 0,
         },
     )
     assert status == 200, body
@@ -176,7 +208,7 @@ def store():
     for name in ("Balcão", "Depósito"):
         status, code = principal.call("POST", "/api/stations/pairing")
         assert status == 201, code
-        station = Browser(f"http://{ADDRESS}:{server.port}")
+        station = server.station()
         status, body = station.call(
             "POST", "/api/stations/pair", {"code": code["code"], "name": name}
         )
@@ -459,7 +491,7 @@ def test_the_server_uses_the_controlled_business_date(store):
 def pair_station(principal, server, name):
     status, code = principal.call("POST", "/api/stations/pairing")
     assert status == 201, code
-    station = Browser(f"http://{ADDRESS}:{server.port}")
+    station = server.station()
     status, body = station.call("POST", "/api/stations/pair", {"code": code["code"], "name": name})
     assert status == 201, body
     station.enter()
@@ -483,7 +515,7 @@ def test_a_copied_credential_is_detected_on_the_real_server():
         principal.enter()
         legit = pair_station(principal, server, "Balcão")
         assert legit.call("GET", "/api/customers")[0] == 200
-        clone = Browser(legit.base)
+        clone = Browser(legit.base, server.cafile)
         for cookie in legit.jar:
             clone.jar.set_cookie(cookie)
         clone.csrf = legit.csrf
@@ -504,3 +536,141 @@ def test_a_copied_credential_is_detected_on_the_real_server():
     finally:
         server.stop()
         shutil.rmtree(root, ignore_errors=True)
+
+
+# ---- "Conectar à loja": the station authenticates the CA before trusting it (P1-E) -----------
+
+
+def test_connect_trusts_the_ca_only_with_the_right_code_and_a_matching_server(store, tmp_path):
+    from app.network import connect as station_setup
+
+    server, principal, _ = store
+    status, code = principal.call("POST", "/api/stations/pairing")
+    assert status == 201
+    trusted = []
+
+    def record_trust(der, previous):
+        trusted.append((der, previous))
+
+    with pytest.raises(station_setup.ConnectError, match="NÃO confere"):
+        station_setup.connect(
+            ADDRESS,
+            "AAAA-" + code["code"][5:],
+            server.https_port,
+            root=tmp_path,
+            trust=record_trust,
+            open_browser=False,
+        )
+    assert trusted == [] and not (tmp_path / "station.json").exists()
+    record = station_setup.connect(
+        ADDRESS,
+        code["code"],
+        server.https_port,
+        root=tmp_path,
+        trust=record_trust,
+        open_browser=False,
+    )
+    assert len(trusted) == 1 and trusted[0][0] == ssl.PEM_cert_to_DER_cert(
+        server.cafile.read_text()
+    )
+    assert record["ca_fingerprint"].count(":") == 31
+    url = station_setup.pairing_url(ADDRESS, server.https_port, code["code"])
+    assert url.startswith(f"https://{ADDRESS}:{server.https_port}/#/parear?codigo=")
+    # O código continua válido para o pareamento no navegador (só a CA foi conferida).
+    station = server.station()
+    paired = station.call("POST", "/api/stations/pair", {"code": code["code"], "name": "Conectada"})
+    assert paired[0] == 201
+    # Reconectar substitui a CA registrada antes (o anterior é informado para ser removido).
+    status, again = principal.call("POST", "/api/stations/pairing")
+    station_setup.connect(
+        ADDRESS,
+        again["code"],
+        server.https_port,
+        root=tmp_path,
+        trust=record_trust,
+        open_browser=False,
+    )
+    assert trusted[-1][1] == record["ca_thumbprint"]
+    removed = []
+    assert station_setup.disconnect(root=tmp_path, untrust=removed.append)
+    assert removed == [record["ca_thumbprint"]] and not (tmp_path / "station.json").exists()
+
+
+def tls_impostor(tmp_path, handler_body):
+    """A machine in the middle: its own CA and certificate, answering /api/stations/ca."""
+    import datetime as dt
+    import http.server
+    import ipaddress
+
+    from app.network.tls import LocalAuthority
+
+    impostor = LocalAuthority(tmp_path / "atacante")
+    impostor.ensure(
+        ["localhost"],
+        [ipaddress.ip_address("127.0.0.1")],
+        now=dt.datetime.now(dt.UTC),
+        networks=[ipaddress.ip_network(f"{ADDRESS}/32")],
+    )
+    certificate, key = impostor.sign(
+        ["localhost"], [ipaddress.ip_address(ADDRESS)], 30, dt.datetime.now(dt.UTC)
+    )
+    from cryptography.hazmat.primitives import serialization
+
+    certfile, keyfile = tmp_path / "mitm.pem", tmp_path / "mitm.key"
+    certfile.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+    keyfile.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    body = json.dumps(handler_body(impostor)).encode()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    httpd = http.server.HTTPServer((ADDRESS, 0), Handler)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile, keyfile)
+    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
+def test_connect_refuses_a_machine_in_the_middle(store, tmp_path):
+    from app.network import connect as station_setup
+
+    server, principal, _ = store
+    status, code = principal.call("POST", "/api/stations/pairing")
+    real_pem = server.cafile.read_text()
+    real = station_setup.fetch_ca(ADDRESS, server.https_port)
+    # 1) O intermediário oferece a própria CA com a prova verdadeira: a prova não confere.
+    own = tls_impostor(
+        tmp_path / "a", lambda ca: {"ca_pem": ca.ca_pem().decode(), "proof": real["proof"]}
+    )
+    # 2) O intermediário repassa a CA e a prova verdadeiras, mas apresenta o próprio certificado:
+    #    a conexão fixada na CA autenticada falha.
+    relay = tls_impostor(tmp_path / "b", lambda ca: {"ca_pem": real_pem, "proof": real["proof"]})
+    try:
+        for mitm, expected in ((own, "NÃO confere"), (relay, "Não foi possível falar")):
+            with pytest.raises(station_setup.ConnectError, match=expected):
+                station_setup.connect(
+                    ADDRESS,
+                    code["code"],
+                    mitm.server_address[1],
+                    root=tmp_path,
+                    trust=lambda *_: pytest.fail("confiou numa CA não autenticada"),
+                    open_browser=False,
+                )
+    finally:
+        own.shutdown()
+        relay.shutdown()
+    assert not (tmp_path / "station.json").exists()

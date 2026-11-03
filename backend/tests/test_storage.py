@@ -49,12 +49,23 @@ def stamp(when, suffix=""):
     return f"locacontrol_{when:%Y-%m-%d_%H%M%S}{suffix}.zip"
 
 
-def test_reserve_is_the_larger_of_10_gb_and_15_percent_on_small_and_large_disks():
-    assert reserve_bytes(32 * GB, LIMIT_DEFAULTS) == 10 * GB  # 15 % = 4,8 GB
-    assert reserve_bytes(64 * GB, LIMIT_DEFAULTS) == 10 * GB  # 15 % = 9,6 GB
-    assert reserve_bytes(256 * GB, LIMIT_DEFAULTS) == int(256 * GB * 15 // 100)
-    assert reserve_bytes(2000 * GB, LIMIT_DEFAULTS) == 300 * GB
-    assert reserve_bytes(2000 * GB, {**LIMIT_DEFAULTS, "min_free_percent": 0}) == 10 * GB
+def test_reserve_is_a_minimum_plus_an_operational_margin_on_small_and_large_disks():
+    """P1-E: 10 GB mínimos + margem de 5 % do disco, no máximo 20 GB, nunca menos que 2× o banco
+    (a tabela de docs/P1E_PROPOSTA.md)."""
+    mb = 1024**2
+    assert reserve_bytes(64 * GB, LIMIT_DEFAULTS, 200 * mb) == 10 * GB + 64 * GB * 5 // 100
+    assert reserve_bytes(256 * GB, LIMIT_DEFAULTS, 1 * GB) == 10 * GB + 256 * GB * 5 // 100
+    assert reserve_bytes(1000 * GB, LIMIT_DEFAULTS, 2 * GB) == 30 * GB  # margem limitada a 20
+    assert reserve_bytes(2000 * GB, LIMIT_DEFAULTS, 5 * GB) == 30 * GB
+    # Banco grande: a margem nunca fica abaixo de duas vezes o banco.
+    assert reserve_bytes(2000 * GB, LIMIT_DEFAULTS, 15 * GB) == 40 * GB
+    assert reserve_bytes(2000 * GB, {**LIMIT_DEFAULTS, "margin_percent": 0}, 0) == 10 * GB
+    # Configuração salva no P1-C: o percentual antigo vira a margem (limitada a 20 GB).
+    legacy = {"max_total_gb": 10, "min_free_gb": 10, "min_free_percent": 15}
+    assert reserve_bytes(256 * GB, legacy, 0) == 10 * GB + 20 * GB
+    assert reserve_bytes(64 * GB, legacy, 0) == 10 * GB + 64 * GB * 15 // 100
+    # A máquina da nuvem (252 GB, 29 GB livres) recusava todo backup com 15 %; agora exige ~22,6.
+    assert reserve_bytes(252 * GB, LIMIT_DEFAULTS, 0) < 29 * GB
 
     def decide(total, free, estimate, managed=0, removable=(), bounded=True, **limits):
         return plan(
@@ -68,14 +79,14 @@ def test_reserve_is_the_larger_of_10_gb_and_15_percent_on_small_and_large_disks(
             bounded=bounded,
         )
 
-    # Disco pequeno (64 GB, 12 GB livres): cabe 1 GB, não cabe 3 GB.
-    assert decide(64 * GB, 12 * GB, 1 * GB).fits
-    small = decide(64 * GB, 12 * GB, 3 * GB)
+    # Disco pequeno (64 GB, exige 13,2 GB livres depois): com 15 GB livres cabe 1 GB
+    # (pico 1,5), não cabe 3 GB.
+    assert decide(64 * GB, 15 * GB, 1 * GB).fits
+    small = decide(64 * GB, 15 * GB, 3 * GB)
     assert not small.fits and "Espaço insuficiente" in small.reason and small.remove == []
-    # Disco grande (2 TB): com 400 GB livres cabe; com 200 GB livres a reserva de 15 % (300 GB)
-    # já não está garantida e nada é gravado.
-    assert decide(2000 * GB, 400 * GB, 5 * GB, max_total_gb=50).fits
-    assert not decide(2000 * GB, 200 * GB, 5 * GB, max_total_gb=50).fits
+    # Disco grande (2 TB, exige 30 GB livres depois): com 40 GB livres cabe 5 GB; com 33 não.
+    assert decide(2000 * GB, 40 * GB, 5 * GB, max_total_gb=50).fits
+    assert not decide(2000 * GB, 33 * GB, 5 * GB, max_total_gb=50).fits
     # Teto: 9,5 GB ocupados + 1 GB passam de 10 GB; sai o que for necessário, na ordem dada.
     cap = decide(
         1000 * GB, 900 * GB, 1 * GB, managed=19 * GB // 2, removable=[("a", GB), ("b", GB)]
@@ -85,7 +96,7 @@ def test_reserve_is_the_larger_of_10_gb_and_15_percent_on_small_and_large_disks(
     assert not blocked.fits and "limite de 10,0 GB" in blocked.reason
     # Recuperação (cópia antes de restaurar, importação) ignora o teto, nunca a reserva.
     assert decide(1000 * GB, 900 * GB, 1 * GB, managed=12 * GB, bounded=False).fits
-    assert not decide(64 * GB, 11 * GB, 1 * GB, bounded=False).fits
+    assert not decide(64 * GB, 13 * GB, 1 * GB, bounded=False).fits
 
 
 def test_removal_order_keeps_the_newest_and_takes_intermediate_sets_first():
@@ -105,7 +116,7 @@ def test_backup_is_refused_before_writing_when_the_disk_would_go_below_the_reser
     person, item = base
     document(client, admin, person, item)
     directory = Path(client.app.state.settings.backup_directory)
-    disk(monkeypatch, total_gb=64, free_gb=10)  # já no limite de 10 GB livres
+    disk(monkeypatch, total_gb=64, free_gb=13)  # abaixo dos 13,2 GB exigidos
     switch(client, admin)
     response = client.post("/api/backups", headers=admin[1])
     assert response.status_code == 507 and "Espaço insuficiente" in response.json()["detail"]
@@ -115,7 +126,8 @@ def test_backup_is_refused_before_writing_when_the_disk_would_go_below_the_reser
     assert history["runs"][0]["status"] == "failed"
     status = client.get("/api/backups/status").json()
     assert status["alert"]["level"] == "danger"
-    assert status["storage"]["fits"] is False and status["storage"]["reserve_bytes"] == 10 * GB
+    reserve = status["storage"]["reserve_bytes"]
+    assert status["storage"]["fits"] is False and reserve == 10 * GB + 64 * GB * 5 // 100
     # Disco grande e folgado: o mesmo backup passa e a estimativa aparece.
     disk(monkeypatch, total_gb=2000, free_gb=1500)
     made = backup(client, admin)
@@ -203,7 +215,7 @@ def test_import_and_second_copy_respect_the_reserve(client, admin, monkeypatch, 
 def test_space_refusals_are_retried_hourly_and_limits_are_validated(client, admin, monkeypatch):
     switch(client, admin)
     assert client.put("/api/backups/config", json=CONFIG, headers=admin[1]).status_code == 200
-    for bad in ({"max_total_gb": 0}, {"min_free_percent": 95}, {"min_free_gb": -1}):
+    for bad in ({"max_total_gb": 0}, {"margin_percent": 60}, {"min_free_gb": -1}):
         response = client.put("/api/backups/config", json={**CONFIG, **bad}, headers=admin[1])
         assert response.status_code == 422
     disk(monkeypatch, total_gb=64, free_gb=5)

@@ -163,7 +163,11 @@ class BackupManager:
         row = db.get(AppSetting, SETTING_KEY)
         if row is None:
             return dict(DEFAULTS)
-        return {**DEFAULTS, "frequency": LEGACY_FREQUENCY, **row.value}
+        saved = dict(row.value)
+        # P1-C rows: the former whole-disk percentage becomes the operational margin (P1-E).
+        if "min_free_percent" in saved:
+            saved.setdefault("margin_percent", saved.pop("min_free_percent"))
+        return {**DEFAULTS, "frequency": LEGACY_FREQUENCY, **saved}
 
     def directory(self, config: dict) -> Path:
         return Path(config["directory"] or self.settings.backup_directory)
@@ -319,6 +323,13 @@ class BackupManager:
         estimate = db_size + files + 64 * 1024  # manifest and zip headers
         return estimate, estimate + db_size
 
+    def database_size(self) -> int:
+        try:
+            database = self.database_path()
+            return database.stat().st_size if database.exists() else 0
+        except (OSError, HTTPException):
+            return 0
+
     def storage_plan(self, config: dict, directory: Path, estimate: int, peak: int, bounded=True):
         items = self.listing(config, directory)
         managed = sum(item["size"] for item in items)
@@ -349,6 +360,7 @@ class BackupManager:
             removable=removal_order(regular),
             config=config,
             bounded=bounded,
+            database=self.database_size(),
         )
 
     def make_room(self, directory: Path, decision) -> list[str]:
@@ -379,6 +391,7 @@ class BackupManager:
                     managed=0,
                     removable=[],
                     config=config,
+                    database=self.database_size(),
                 )
             )
         except (OSError, StopIteration, HTTPException) as error:
@@ -389,7 +402,7 @@ class BackupManager:
             "cap_bytes": cap_bytes(config),
             "free_bytes": usage.free,
             "disk_bytes": usage.total,
-            "reserve_bytes": reserve_bytes(usage.total, config),
+            "reserve_bytes": reserve_bytes(usage.total, config, self.database_size()),
             "estimate_bytes": estimate,
             "peak_bytes": peak,
             "fits": decision.fits,
@@ -654,7 +667,7 @@ class BackupManager:
         part = directory / f".import-{uuid.uuid4().hex}.part"
         usage = self.disk_usage(directory)
         # A recovery copy may exceed the cap, never the free-space reserve (A3).
-        room = usage.free - reserve_bytes(usage.total, config)
+        room = usage.free - reserve_bytes(usage.total, config, self.database_size())
         try:
             size = 0
             with part.open("wb") as out:
@@ -750,7 +763,7 @@ class BackupManager:
             by_disk[device] = (known[0], known[1] + need)
         for anchor, need in by_disk.values():
             usage = self.disk_usage(anchor)
-            reserve = reserve_bytes(usage.total, config)
+            reserve = reserve_bytes(usage.total, config, self.database_size())
             if usage.free - need < reserve:
                 raise HTTPException(
                     SPACE_STATUS,
@@ -961,5 +974,8 @@ class BackupScheduler(threading.Thread):
             except Exception:  # noqa: BLE001 — a failed backup must not stop later attempts
                 logger.exception("Falha no backup automático.")
 
-    def stop(self):
+    def stop(self, wait: bool = False):
+        """With `wait`, returns only after a backup in progress has finished (REL-P1E-02)."""
         self.stop_event.set()
+        if wait and self.is_alive():
+            self.join()

@@ -32,12 +32,17 @@ router = APIRouter(prefix="/api", tags=["Identidade e segurança"])
 LoginEditionOnly = Depends(not_in_local_mode)
 
 
-def set_session_cookie(response: Response, settings, token: str):
+def secure_cookie(settings, request: Request | None) -> bool:
+    """Secure when configured or when the request itself came over HTTPS (stations, P1-E)."""
+    return settings.cookie_secure or bool(request and request.url.scheme == "https")
+
+
+def set_session_cookie(response: Response, settings, token: str, request: Request | None = None):
     response.set_cookie(
         COOKIE,
         token,
         httponly=True,
-        secure=settings.cookie_secure,
+        secure=secure_cookie(settings, request),
         samesite="strict",
         max_age=settings.session_hours * 3600,
         path="/api",
@@ -56,7 +61,7 @@ def login(payload: schemas.Login, request: Request, response: Response, db: DB):
     old = request.cookies.get(COOKIE)
     if old:
         db.execute(delete(AuthSession).where(AuthSession.token_hash == digest(old)))
-    set_session_cookie(response, settings, token)
+    set_session_cookie(response, settings, token, request)
     return result
 
 
@@ -85,16 +90,16 @@ def open_local_session(
     IdentityService(db, user).audit(
         "local_session.opened", "users", user.id, {"station_id": station["id"]} if station else {}
     )
-    set_session_cookie(response, settings, token)
+    set_session_cookie(response, settings, token, request)
     return token, user
 
 
-def set_station_cookie(response: Response, settings, token: str):
+def set_station_cookie(response: Response, settings, token: str, request: Request | None = None):
     response.set_cookie(
         STATION_COOKIE,
         token,
         httponly=True,
-        secure=settings.cookie_secure,
+        secure=secure_cookie(settings, request),
         samesite="strict",
         max_age=STATION_COOKIE_DAYS * 86400,
         path="/api",

@@ -32,7 +32,7 @@ it('pairs this computer with the code and then opens as a station', async () => 
       )
     if (url === '/api/stations/pair') {
       const body = JSON.parse(String(init.body))
-      if (body.code !== 'ABCD-EFGH')
+      if (body.code !== 'ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-23')
         return Promise.resolve(json({ detail: 'Código incorreto. Restam 4 tentativas.' }, 403))
       paired = true
       return Promise.resolve(json({ station: stationSession.station }, 201))
@@ -52,11 +52,11 @@ it('pairs this computer with the code and then opens as a station', async () => 
   await user.click(screen.getByRole('button', { name: 'Conectar à loja' }))
   expect(screen.getByText(/Dê um nome a este computador/)).toBeInTheDocument()
   await user.type(screen.getByLabelText('Nome desta estação'), 'Balcão 1')
-  await user.type(screen.getByLabelText('Código de pareamento'), 'abcd-xxxx')
+  await user.type(screen.getByLabelText('Código de pareamento'), 'abcd-xxxx-jklm-npqr-stuv-wxyz-23')
   await user.click(screen.getByRole('button', { name: 'Conectar à loja' }))
   expect(await screen.findByText('Código incorreto. Restam 4 tentativas.')).toBeInTheDocument()
   await user.clear(screen.getByLabelText('Código de pareamento'))
-  await user.type(screen.getByLabelText('Código de pareamento'), 'abcd-efgh')
+  await user.type(screen.getByLabelText('Código de pareamento'), 'abcd-efgh-jklm-npqr-stuv-wxyz-23')
   await user.click(screen.getByRole('button', { name: 'Conectar à loja' }))
   await screen.findByRole('heading', { name: 'Visão geral' })
   expect(screen.getAllByText('Estação Balcão 1 · rede da loja').length).toBeGreaterThan(0)
@@ -67,4 +67,30 @@ it('pairs this computer with the code and then opens as a station', async () => 
     method: 'POST',
     headers: expect.objectContaining({ 'X-LocaControl-Request': '1' }),
   })
+})
+
+it('takes the code the installer put in the address and erases it from the address bar', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() =>
+      Promise.resolve(
+        json({ detail: 'Este computador não tem acesso.' }, 401, {
+          ...local,
+          'X-LocaControl-Pairing': 'available',
+        }),
+      ),
+    ),
+  )
+  window.location.hash = '#/parear?codigo=ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-23'
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <App />
+    </QueryClientProvider>,
+  )
+  await screen.findByRole('heading', { name: 'Conectar este computador à loja' })
+  expect(screen.getByLabelText('Código de pareamento')).toHaveValue(
+    'ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-23',
+  )
+  expect(window.location.hash).not.toContain('codigo')
+  expect(screen.getByText(/Conectar à loja/, { selector: 'strong' })).toBeInTheDocument()
 })

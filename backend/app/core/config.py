@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # A retired token is still accepted this long (requests in flight, other tabs) before its
     # use counts as reuse of a copied credential.
     station_token_grace_seconds: int = Field(default=120, ge=1, le=3_600)
+    # HTTPS for the stations (P1-E): the store network only reaches this port; plain HTTP stays on
+    # 127.0.0.1 for this computer.
+    https_port: int = Field(default=8443, ge=1, le=65_535)
+    # Pairing code: 26 characters of a 32-symbol alphabet = 130 bits (13 = 65 bits minimum). The
+    # code also authenticates the CA a station downloads, so it must resist an offline search.
+    pairing_code_length: int = Field(default=26, ge=13, le=40)
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     allowed_origins: list[str] = [
         "http://localhost:8000",

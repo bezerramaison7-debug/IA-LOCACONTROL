@@ -13,7 +13,9 @@ const configSchema = z.object({
   /** Storage limits (A3): cap of the backup folder and free space kept on its disk. */
   max_total_gb: z.number(),
   min_free_gb: z.number(),
-  min_free_percent: z.number(),
+  /** P1-E: operational margin on top of the minimum reserve. */
+  margin_percent: z.number(),
+  margin_max_gb: z.number(),
 })
 const storageSchema = z.union([
   z.object({

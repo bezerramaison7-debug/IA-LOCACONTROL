@@ -3,8 +3,11 @@
 Pure decisions (no I/O) so they can be tested for small and large volumes:
 
 - **cap**: the managed backup folder may hold at most `max_total_gb` (default 10 GB);
-- **reserve**: after writing, the disk keeps at least max(`min_free_gb`, `min_free_percent` % of
-  the disk) free (defaults 10 GB and 15 %), so the database and the system can still write;
+- **reserve** (P1-E): after writing, the disk keeps free a *minimum reserve* (`min_free_gb`,
+  default 10 GB) plus an *operational margin*: `margin_percent` % of the disk (default 5 %),
+  capped at `margin_max_gb` (default 20 GB) but never less than twice the database (its growth
+  and SQLite's temporary copy). The former 15 % of the whole disk suspended every backup on large
+  disks that were merely busy (1 TB needed 150 GB free);
 - **estimate before writing**: the peak of a new set is the temporary database copy plus the set
   itself; nothing starts unless that peak fits;
 - **safe retention under pressure**: to make room, regular sets are removed oldest first, the
@@ -18,18 +21,27 @@ an imported set may exceed the cap, but never the free-space reserve.
 from dataclasses import dataclass, field
 
 GB = 1024**3
-LIMIT_DEFAULTS = {"max_total_gb": 10, "min_free_gb": 10, "min_free_percent": 15}
+LIMIT_DEFAULTS = {"max_total_gb": 10, "min_free_gb": 10, "margin_percent": 5, "margin_max_gb": 20}
 
 
-def reserve_bytes(disk_total: int, config: dict) -> int:
-    """Free space that must remain on the disk: the larger of the absolute and relative floors."""
-    absolute = int(config.get("min_free_gb", LIMIT_DEFAULTS["min_free_gb"])) * GB
-    percent = int(config.get("min_free_percent", LIMIT_DEFAULTS["min_free_percent"]))
-    return max(absolute, disk_total * percent // 100)
+def limits(config: dict) -> dict:
+    """The storage limits of a configuration; a row saved with the former `min_free_percent`
+    (P1-C) keeps that percentage as the operational margin."""
+    values = {key: config.get(key) for key in LIMIT_DEFAULTS}
+    if values["margin_percent"] is None and config.get("min_free_percent") is not None:
+        values["margin_percent"] = config["min_free_percent"]
+    return {key: int(LIMIT_DEFAULTS[key] if v is None else v) for key, v in values.items()}
+
+
+def reserve_bytes(disk_total: int, config: dict, database: int = 0) -> int:
+    """Free space that must remain on the disk: minimum reserve + operational margin."""
+    values = limits(config)
+    margin = min(disk_total * values["margin_percent"] // 100, values["margin_max_gb"] * GB)
+    return values["min_free_gb"] * GB + max(margin, 2 * database)
 
 
 def cap_bytes(config: dict) -> int:
-    return int(config.get("max_total_gb", LIMIT_DEFAULTS["max_total_gb"])) * GB
+    return limits(config)["max_total_gb"] * GB
 
 
 @dataclass
@@ -57,13 +69,14 @@ def plan(
     removable: list[tuple[str, int]],
     config: dict,
     bounded: bool = True,
+    database: int = 0,
 ) -> Plan:
     """Decides whether a set of `estimate` bytes (peak `peak` while writing) can be written.
 
     `removable` lists (name, size) in the order they may be removed to make room. `bounded`
     is False for recovery copies, which only need the free-space reserve.
     """
-    reserve = reserve_bytes(disk_total, config)
+    reserve = reserve_bytes(disk_total, config, database)
     cap = cap_bytes(config)
     remove, freed = [], 0
 

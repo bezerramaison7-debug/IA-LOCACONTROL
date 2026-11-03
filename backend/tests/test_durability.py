@@ -21,7 +21,8 @@ CONFIG = {
     "mirror_directory": "",
     "max_total_gb": 10,
     "min_free_gb": 10,
-    "min_free_percent": 15,
+    "margin_percent": 5,
+    "margin_max_gb": 20,
 }
 
 

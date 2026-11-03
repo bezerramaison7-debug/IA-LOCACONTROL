@@ -15,7 +15,8 @@ const config = {
   mirror_directory: '',
   max_total_gb: 10,
   min_free_gb: 10,
-  min_free_percent: 15,
+  margin_percent: 5,
+  margin_max_gb: 20,
 }
 const run = {
   started_at: '2026-10-11T22:00:00-03:00',
@@ -104,7 +105,8 @@ it('lists the sets and validates the configuration before saving', async () => {
         mirror_directory: '',
         max_total_gb: 10,
         min_free_gb: 10,
-        min_free_percent: 15,
+        margin_percent: 5,
+        margin_max_gb: 20,
       },
     ],
   ])
@@ -270,9 +272,9 @@ it('shows the space limits and refuses invalid limits before saving', async () =
   const space = await screen.findByLabelText('Espaço dos backups')
   expect(space).toHaveTextContent('3 GB de 10 GB')
   expect(space).toHaveTextContent('(não cabe)')
-  await user.clear(screen.getByLabelText('Manter livres no disco (%)'))
-  await user.type(screen.getByLabelText('Manter livres no disco (%)'), '95')
+  await user.clear(screen.getByLabelText('Margem operacional (%)'))
+  await user.type(screen.getByLabelText('Margem operacional (%)'), '60')
   await user.click(screen.getByRole('button', { name: 'Salvar configuração' }))
-  expect(screen.getByText('Informe de 0 a 90%.')).toBeInTheDocument()
+  expect(screen.getByText('Informe de 0 a 50%.')).toBeInTheDocument()
   expect(writes(request)).toHaveLength(0)
 })
