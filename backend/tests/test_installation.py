@@ -1,5 +1,6 @@
 """P1-B: program and data folders, packaged resources, server entry point, single instance."""
 
+import json
 import os
 import sqlite3
 import subprocess
@@ -172,12 +173,29 @@ def prepare_process(env):
     )
 
 
+def save_small_reserve(database: Path):
+    """Processos à parte não veem o disco simulado do conftest: a instalação de teste grava a
+    própria reserva (como em Gestão → Backups) para caber em máquinas de CI com pouco disco.
+    A reserva padrão é testada em test_storage.py e na recusa por falta de espaço abaixo."""
+    connection = sqlite3.connect(database)
+    try:
+        limits = {"max_total_gb": 10, "min_free_gb": 1, "margin_percent": 0, "margin_max_gb": 0}
+        connection.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES ('backup', ?, 0)",
+            (json.dumps(limits),),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def test_simultaneous_starts_never_migrate_twice(data_dir):
     database = data_dir / "locacontrol.db"
     data_dir.mkdir(parents=True)
     old = Config(str(resource("backend/alembic.ini")))
     old.attributes["database_url"] = f"sqlite:///{database.as_posix()}"
     command.upgrade(old, "0009_fiscal")
+    save_small_reserve(database)
     env = {"LOCACONTROL_DATA_DIR": str(data_dir), "LOCACONTROL_LOCAL_MODE": "true"}
     starts = [prepare_process(env) for _ in range(2)]
     codes = sorted(process.wait(timeout=120) for process in starts)

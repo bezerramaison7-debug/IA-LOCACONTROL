@@ -40,7 +40,7 @@ def own_address():
 
 def relaxed_backup_limits(url):
     """Temporary E2E databases only: the machine running the suite may not have the default
-    free-space reserve (10 GB or 15 % of the disk, A3); the limits are tested in pytest."""
+    free-space reserve (10 GB + operational margin, P1-E); the limits are tested in pytest."""
     path = url.removeprefix("sqlite:///")
     connection = sqlite3.connect(path)
     try:

@@ -102,16 +102,17 @@ def test_scheduler_keeps_going_after_failures_and_recovers(client, admin, monkey
     assert client.put("/api/backups/config", json=config, headers=admin[1]).status_code == 200
     scheduler = BackupScheduler(manager(client))
     now = datetime.now(BUSINESS_TZ)
-    monkeypatch.setattr(
-        backup_module.BackupManager,
-        "_create",
-        lambda self, config, kind: (_ for _ in ()).throw(OSError(errno.EIO, "I/O error")),
-    )
-    with pytest.raises(HTTPException) as failed:
-        scheduler.tick(now)
+    # Só esta troca é desfeita depois (monkeypatch.undo() desfaria também o disco simulado).
+    with monkeypatch.context() as broken:
+        broken.setattr(
+            backup_module.BackupManager,
+            "_create",
+            lambda self, config, kind: (_ for _ in ()).throw(OSError(errno.EIO, "I/O error")),
+        )
+        with pytest.raises(HTTPException) as failed:
+            scheduler.tick(now)
     assert failed.value.status_code == 500
     assert_business_as_usual(client, admin, "11144477735")
-    monkeypatch.undo()
     made = scheduler.tick(now + timedelta(minutes=6))  # passada a espera, tenta de novo
     assert made and made["kind"] == "auto"
     assert manager(client).history()["runs"][0]["status"] == "ok"
