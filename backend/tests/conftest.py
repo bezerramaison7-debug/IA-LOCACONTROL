@@ -1,4 +1,5 @@
 import shutil
+from collections import namedtuple
 from pathlib import Path
 from uuid import uuid4
 
@@ -9,6 +10,21 @@ from fastapi.testclient import TestClient
 
 from app.core.config import PROJECT_ROOT, Settings
 from app.main import create_app
+from app.ops.backup import BackupManager
+from app.ops.storage import GB
+
+DiskUsage = namedtuple("DiskUsage", "total used free")
+
+
+@pytest.fixture(autouse=True)
+def roomy_disk(monkeypatch):
+    """Backups see a simulated 1 TB disk with 900 GB free, so the storage limits (A3) do not
+    depend on the machine running the tests. test_storage.py simulates small and full disks."""
+    monkeypatch.setattr(
+        BackupManager,
+        "disk_usage",
+        staticmethod(lambda _path: DiskUsage(1000 * GB, 100 * GB, 900 * GB)),
+    )
 
 
 @pytest.fixture

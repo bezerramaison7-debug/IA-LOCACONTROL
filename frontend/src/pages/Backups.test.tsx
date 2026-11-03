@@ -13,6 +13,9 @@ const config = {
   keep: 14,
   directory: '',
   mirror_directory: '',
+  max_total_gb: 10,
+  min_free_gb: 10,
+  min_free_percent: 15,
 }
 const run = {
   started_at: '2026-10-11T22:00:00-03:00',
@@ -99,6 +102,9 @@ it('lists the sets and validates the configuration before saving', async () => {
         keep: 14,
         directory: 'D:\\Backups',
         mirror_directory: '',
+        max_total_gb: 10,
+        min_free_gb: 10,
+        min_free_percent: 15,
       },
     ],
   ])
@@ -232,4 +238,41 @@ it('shows the last copy, the warning and imports a set kept on another disk', as
   const sent = writes(request).find(([path]) => path === '/backups/import')!
   expect(sent[1]).toBe('POST')
   expect((sent[2] as FormData).get('file')).toBe(file)
+})
+
+it('shows the space limits and refuses invalid limits before saving', async () => {
+  const user = userEvent.setup()
+  const GB = 1024 ** 3
+  const request = mockRequest((_path, method) =>
+    method === 'GET'
+      ? {
+          ...overview,
+          status: {
+            ...status,
+            storage: {
+              available: true,
+              managed_bytes: 3 * GB,
+              cap_bytes: 10 * GB,
+              free_bytes: 40 * GB,
+              disk_bytes: 256 * GB,
+              reserve_bytes: 38 * GB,
+              estimate_bytes: 1 * GB,
+              peak_bytes: 2 * GB,
+              fits: false,
+              removes: 0,
+              reason: 'Espaço insuficiente.',
+            },
+          },
+        }
+      : overview,
+  )
+  renderPage(<Backups />, request)
+  const space = await screen.findByLabelText('Espaço dos backups')
+  expect(space).toHaveTextContent('3 GB de 10 GB')
+  expect(space).toHaveTextContent('(não cabe)')
+  await user.clear(screen.getByLabelText('Manter livres no disco (%)'))
+  await user.type(screen.getByLabelText('Manter livres no disco (%)'), '95')
+  await user.click(screen.getByRole('button', { name: 'Salvar configuração' }))
+  expect(screen.getByText('Informe de 0 a 90%.')).toBeInTheDocument()
+  expect(writes(request)).toHaveLength(0)
 })

@@ -47,11 +47,19 @@ function ConfigForm({
   const { request } = useAuth()
   const [config, setConfig] = useState<BackupConfig>(data.config)
   const [keep, setKeep] = useState(String(data.config.keep))
+  const [limits, setLimits] = useState({
+    max_total_gb: String(data.config.max_total_gb),
+    min_free_gb: String(data.config.min_free_gb),
+    min_free_percent: String(data.config.min_free_percent),
+  })
   const [errors, setErrors] = useState<{
     time?: string
     keep?: string
     directory?: string
     mirror?: string
+    max_total_gb?: string
+    min_free_gb?: string
+    min_free_percent?: string
   }>({})
   const [failure, setFailure] = useState('')
   const [saving, setSaving] = useState(false)
@@ -75,12 +83,24 @@ function ConfigForm({
           directory: absolutePath(config.directory)
             ? undefined
             : 'Informe o caminho completo da pasta, por exemplo D:\\Backups\\LocaControl.',
+          max_total_gb:
+            /^\d{1,6}$/.test(limits.max_total_gb.trim()) && Number(limits.max_total_gb) >= 1
+              ? undefined
+              : 'Informe o limite em GB (1 ou mais).',
+          min_free_gb: /^\d{1,6}$/.test(limits.min_free_gb.trim())
+            ? undefined
+            : 'Informe quantos GB manter livres (0 ou mais).',
+          min_free_percent:
+            /^\d{1,2}$/.test(limits.min_free_percent.trim()) &&
+            Number(limits.min_free_percent) <= 90
+              ? undefined
+              : 'Informe de 0 a 90%.',
           mirror: absolutePath(config.mirror_directory)
             ? undefined
             : 'Informe o caminho completo da pasta, por exemplo E:\\Copia\\LocaControl.',
         }
         setErrors(next)
-        if (next.time || next.keep || next.directory || next.mirror) return
+        if (Object.values(next).some(Boolean)) return
         setFailure('')
         setSaving(true)
         void saveBackupConfig(request, {
@@ -88,6 +108,9 @@ function ConfigForm({
           keep: Number(keep),
           directory: config.directory.trim(),
           mirror_directory: config.mirror_directory.trim(),
+          max_total_gb: Number(limits.max_total_gb),
+          min_free_gb: Number(limits.min_free_gb),
+          min_free_percent: Number(limits.min_free_percent),
         })
           .then(onSaved)
           .catch((e) => setFailure(failureMessage(e, 'Não foi possível salvar a configuração.')))
@@ -160,6 +183,35 @@ function ConfigForm({
         hint="Cada backup concluído é copiado e conferido também nesta pasta, de preferência em outro disco ou pendrive que fique conectado. Deixe em branco para não fazer."
         onChange={(e) => setConfig({ ...config, mirror_directory: e.target.value })}
       />
+      <div className="master-form-grid">
+        <Field
+          label="Limite para backups (GB)"
+          inputMode="numeric"
+          maxLength={6}
+          value={limits.max_total_gb}
+          error={errors.max_total_gb}
+          hint="Espaço máximo da pasta de backups. Para abrir espaço, saem primeiro as cópias intermediárias mais antigas; a mais recente, as anteriores a restaurações e as importadas nunca."
+          onChange={(e) => setLimits({ ...limits, max_total_gb: e.target.value })}
+        />
+        <Field
+          label="Manter livres no disco (GB)"
+          inputMode="numeric"
+          maxLength={6}
+          value={limits.min_free_gb}
+          error={errors.min_free_gb}
+          hint="O backup não é feito se o disco ficaria com menos que isso."
+          onChange={(e) => setLimits({ ...limits, min_free_gb: e.target.value })}
+        />
+        <Field
+          label="Manter livres no disco (%)"
+          inputMode="numeric"
+          maxLength={2}
+          value={limits.min_free_percent}
+          error={errors.min_free_percent}
+          hint="Vale o maior dos dois: em GB ou em porcentagem do disco."
+          onChange={(e) => setLimits({ ...limits, min_free_percent: e.target.value })}
+        />
+      </div>
       <Failure message={failure} />
       <div className="row-actions">
         <Button type="submit" disabled={saving}>
@@ -206,6 +258,19 @@ function ProtectionStatus({ data }: { data: BackupsData }) {
           ' · Última verificação sem alterações nos dados: ' + brIso(status.unchanged_at)}
         {' · Espaço ocupado pelos backups: ' + fileSize(data.total_size)}
       </p>
+      {status.storage?.available && (
+        <p className="draft-status" aria-label="Espaço dos backups">
+          Limite: {fileSize(status.storage.managed_bytes)} de {fileSize(status.storage.cap_bytes)} ·
+          Disco: {fileSize(status.storage.free_bytes)} livres, mínimo de{' '}
+          {fileSize(status.storage.reserve_bytes)} · Próximo backup: cerca de{' '}
+          {fileSize(status.storage.estimate_bytes)}
+          {status.storage.fits
+            ? status.storage.removes
+              ? ' (vai remover ' + status.storage.removes + ' cópia(s) antiga(s) para caber)'
+              : ' (cabe)'
+            : ' (não cabe)'}
+        </p>
+      )}
       <p className="draft-status">
         <TriangleAlert size={14} aria-hidden="true" /> {status.requires_running}
       </p>

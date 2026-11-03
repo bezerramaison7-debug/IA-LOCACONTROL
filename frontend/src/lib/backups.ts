@@ -10,7 +10,27 @@ const configSchema = z.object({
   keep: z.number(),
   directory: z.string(),
   mirror_directory: z.string(),
+  /** Storage limits (A3): cap of the backup folder and free space kept on its disk. */
+  max_total_gb: z.number(),
+  min_free_gb: z.number(),
+  min_free_percent: z.number(),
 })
+const storageSchema = z.union([
+  z.object({
+    available: z.literal(true),
+    managed_bytes: z.number(),
+    cap_bytes: z.number(),
+    free_bytes: z.number(),
+    disk_bytes: z.number(),
+    reserve_bytes: z.number(),
+    estimate_bytes: z.number(),
+    peak_bytes: z.number(),
+    fits: z.boolean(),
+    removes: z.number(),
+    reason: z.string(),
+  }),
+  z.object({ available: z.literal(false), error: z.string() }),
+])
 export const backupItemSchema = z.object({
   name: z.string(),
   size: z.number(),
@@ -40,6 +60,7 @@ export const backupStatusSchema = z.object({
   runs: z.array(runSchema),
   alert: z.object({ level: z.enum(['warning', 'danger']), message: z.string() }).nullable(),
   requires_running: z.string(),
+  storage: storageSchema.optional(),
 })
 export const backupsSchema = z.object({
   config: configSchema,
