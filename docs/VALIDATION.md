@@ -32,3 +32,19 @@ Cabeça do PR #3 (`p0/integridade`, sobre o PR #2), com o modo manutenção, o d
 | Smoke | aprovado |
 
 Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
+
+## 2026-11-02 — SHA `00d4b59` (P1-C, proteção automática)
+
+Cabeça da branch `p1/c-protecao` (PR sobre `p1/b-instalacao`). Executado no **Linux da nuvem** (Python 3.13, Node 22, Chromium 1243 do Playwright), não no Windows; bancos, pastas e servidores temporários; nenhum banco operacional.
+
+| Verificação | Resultado |
+| --- | --- |
+| `ruff check backend scripts/smoke.py scripts/e2e-auth.py` / `ruff format --check backend` | aprovado; 104 arquivos formatados |
+| `pytest backend/tests` | 192 passaram, 1 pulado (ACL do Windows, `os.name != "nt"`), 1 aviso de depreciação. Referência Windows no `b027d7a`: 183; no Linux, o `b027d7a` deu 182 + 1 pulado. Novos: 10 (`test_protection.py`, `test_drafts.py`, restauração com pasta de backups em outro sistema de arquivos) |
+| Frontend: `lint`, `format:check`, Vitest, `build` | sem erros; 78 testes em 16 arquivos; build concluído (aviso conhecido de chunk acima de 500 kB) |
+| E2E (`scripts/e2e-auth.py`) | 36 passaram (edição com login, 4 tamanhos de tela) + 4 (edição local, desktop e mobile: rascunho que sobrevive a recarregar e à perda da sessão; restauração só com a frase) |
+| Smoke (`scripts/smoke.py`) | aprovado |
+
+Não coberto: Windows (instalador, pendrive/HD externo como pasta de backups ou segunda cópia, `msvcrt`/ACL), backup automático real de 20 minutos durante horas, leitores de tela.
+
+Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
