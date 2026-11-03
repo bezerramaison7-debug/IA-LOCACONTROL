@@ -115,9 +115,11 @@ def test_connect_failure_returns_its_own_exit_code(data_dir, monkeypatch, capsys
 
 def test_stop_without_a_running_server_is_harmless(data_dir):
     assert launcher.main(["parar"]) == 0
+    # PID deixado por um fim anormal: nada roda (a trava está livre), nada é encerrado, e o
+    # arquivo fica para o próximo início verificar o banco (REL-P1E-02).
     (data_dir / "locacontrol.pid").write_text("999999999")
     assert launcher.main(["parar"]) == 0
-    assert not (data_dir / "locacontrol.pid").exists()
+    assert (data_dir / "locacontrol.pid").exists()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="caminhos POSIX")

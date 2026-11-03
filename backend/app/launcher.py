@@ -4,9 +4,13 @@
   running and opens the browser; on a station, opens the store's address;
 - `servir`: runs the server (app.server); in the windowed executable its output goes to
   `<data>/logs/servidor.log`;
+- `servico`: the same server hosted by the Windows service "LocaControl" (SEC-P1E-01), which runs
+  under its own identity `NT SERVICE\\LocaControl`; only the service manager starts this verb;
 - `conectar --servidor <endereço> --codigo <código>`: "Conectar à loja" (app.network.connect);
 - `desconectar`: removes the trust a station installed (uninstall);
-- `parar`: stops the server of this data folder (update and uninstall).
+- `parar`: controlled stop of the server of this data folder (update and uninstall, REL-P1E-02):
+  asks it to finish what is in progress and waits; forces only after the wait, and never with
+  `--sem-forcar`.
 """
 
 import argparse
@@ -16,6 +20,7 @@ import sys
 import time
 import urllib.request
 import webbrowser
+from pathlib import Path
 
 from app.core.config import data_root
 
@@ -23,6 +28,12 @@ DEFAULT_PORT = 8000
 LOG_LIMIT = 10 * 1024 * 1024
 EXIT_CONNECT_FAILED = 2
 EXIT_NOT_STARTED = 6
+# `parar`: the server did not finish within the wait and was ended by force (the next start
+# checks the database), or, with --sem-forcar, it is still running and nothing was forced.
+EXIT_FORCED = 7
+EXIT_STILL_RUNNING = 9
+EXIT_NO_PERMISSION = 13
+STOP_WAIT = 180
 COMMANDS_LOG = "comandos.log"  # conectar/desconectar/parar/abrir in the windowed executable
 
 
@@ -69,7 +80,12 @@ def open_app(port: int, browser: bool = True, wait: float = 90) -> int:
             webbrowser.open(station["url"])
         return 0
     if not health(port):
-        spawn(server_command(port))
+        from app import winservice
+
+        if winservice.installed():
+            winservice.start()  # the service runs as its own identity, never as this user
+        else:
+            spawn(server_command(port))
         deadline = time.monotonic() + wait
         while not health(port):
             if time.monotonic() > deadline:
@@ -85,73 +101,123 @@ def open_app(port: int, browser: bool = True, wait: float = 90) -> int:
     return 0
 
 
+def log_folders():
+    """`<data>/logs`, then this user's own folder: since SEC-P1E-01 a Windows user without
+    administrator rights cannot write in the data folder."""
+    yield data_root() / "logs"
+    if local := os.environ.get("LOCALAPPDATA"):
+        yield Path(local) / "LocaControl" / "logs"
+
+
 def redirect_output(name: str = "servidor.log"):
-    """The windowed executable has no console: keep its messages in `<data>/logs/<name>`."""
+    """The windowed executable has no console: keep its messages in a log file. Never fails: with
+    no writable folder the messages are dropped, as they would be without a console."""
     if sys.stdout is not None and sys.stderr is not None:
         return
-    folder = data_root() / "logs"
-    folder.mkdir(parents=True, exist_ok=True)
-    log = folder / name
-    if log.exists() and log.stat().st_size > LOG_LIMIT:
-        os.replace(log, log.with_suffix(".log.1"))
-    stream = open(log, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 — lives with the process
-    sys.stdout = sys.stderr = stream
+    for folder in log_folders():
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            log = folder / name
+            if log.exists() and log.stat().st_size > LOG_LIMIT:
+                os.replace(log, log.with_suffix(".log.1"))
+            stream = open(log, "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+        except OSError:
+            continue
+        sys.stdout = sys.stderr = stream
+        return
 
 
-def stop(wait: float = 30) -> int:
-    from app.server import PID_FILE
+def server_running(root: Path) -> bool:
+    """True while a server holds the lock of this data folder (more reliable than the PID file,
+    whose number may by now belong to another program)."""
+    from app.server import AlreadyRunning, acquire_lock
 
-    pid_file = data_root() / PID_FILE
     try:
-        pid = int(pid_file.read_text(encoding="ascii").strip())
+        handle = acquire_lock(root)
+    except AlreadyRunning:
+        return True
+    handle.close()
+    return False
+
+
+def stop(wait: float = STOP_WAIT, force: bool = True) -> int:
+    """Controlled stop (REL-P1E-02): ask, wait for backups/requests to finish, force only last."""
+    from app import winservice
+    from app.server import PID_FILE, STOP_FILE
+
+    root = data_root()
+    try:
+        if not server_running(root):
+            return 0
+        if winservice.running():
+            winservice.stop()  # the service manager's STOP: same controlled path
+        else:
+            (root / STOP_FILE).write_text("parar", encoding="ascii")
+    except PermissionError:
+        print(
+            "Sem permissão para encerrar o LocaControl (use uma conta de administrador).",
+            file=sys.stderr,
+        )
+        return EXIT_NO_PERMISSION
+    deadline = time.monotonic() + wait
+    while server_running(root):
+        if time.monotonic() > deadline:
+            break
+        time.sleep(0.5)
+    else:
+        return 0
+    if not force:
+        print(
+            f"O LocaControl não terminou em {wait:.0f} s (backup ou gravação em andamento?). "
+            "Nada foi forçado; tente de novo em alguns minutos.",
+            file=sys.stderr,
+        )
+        return EXIT_STILL_RUNNING
+    try:
+        pid = int((root / PID_FILE).read_text(encoding="ascii").strip())
     except (OSError, ValueError):
-        return 0  # nothing running from this data folder
+        return EXIT_STILL_RUNNING
+    print(
+        f"O LocaControl não terminou em {wait:.0f} s e foi encerrado à força; o banco será "
+        "verificado no próximo início.",
+        file=sys.stderr,
+    )
+    kill(pid)
+    deadline = time.monotonic() + 30
+    while server_running(root) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    # The PID file stays: the next start sees an unclean end and runs integrity_check.
+    return EXIT_FORCED
+
+
+def kill(pid: int):
     if os.name == "nt":
         subprocess.run(
             ["taskkill", "/PID", str(pid), "/T", "/F"],
             capture_output=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-    else:
-        import signal
+        return
+    import signal
 
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-    deadline = time.monotonic() + wait
-    while pid_alive(pid) and time.monotonic() < deadline:
-        time.sleep(0.2)
-    pid_file.unlink(missing_ok=True)
-    return 0
-
-
-def pid_alive(pid: int) -> bool:
-    if os.name == "nt":
-        result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-            capture_output=True,
-            text=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        return str(pid) in result.stdout
     try:
-        os.kill(pid, 0)
+        os.kill(pid, signal.SIGKILL)
     except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     verb = argv.pop(0) if argv and not argv[0].startswith("-") else "abrir"
-    redirect_output("servidor.log" if verb == "servir" else COMMANDS_LOG)
+    redirect_output("servidor.log" if verb in ("servir", "servico") else COMMANDS_LOG)
     if verb == "servir":
         from app import server
 
         return server.main(argv)
+    if verb == "servico":
+        from app import server, winservice
+
+        return winservice.host(lambda stop_event, started: server.main(argv, stop_event, started))
     parser = argparse.ArgumentParser(prog="LocaControl", description="LocaControl")
     parser.add_argument("--porta", type=int, default=DEFAULT_PORT)
     if verb == "conectar":
@@ -176,7 +242,10 @@ def main(argv: list[str] | None = None) -> int:
         disconnect()
         return 0
     if verb == "parar":
-        return stop()
+        parser.add_argument("--espera", type=float, default=STOP_WAIT)
+        parser.add_argument("--sem-forcar", action="store_true")
+        args = parser.parse_args(argv)
+        return stop(args.espera, force=not args.sem_forcar)
     if verb == "abrir":
         parser.add_argument("--sem-navegador", action="store_true")
         args = parser.parse_args(argv)

@@ -974,5 +974,8 @@ class BackupScheduler(threading.Thread):
             except Exception:  # noqa: BLE001 — a failed backup must not stop later attempts
                 logger.exception("Falha no backup automático.")
 
-    def stop(self):
+    def stop(self, wait: bool = False):
+        """With `wait`, returns only after a backup in progress has finished (REL-P1E-02)."""
         self.stop_event.set()
+        if wait and self.is_alive():
+            self.join()

@@ -5,11 +5,18 @@ missing-database check -> schema upgrade with a prior database copy -> first-acc
 (login edition only) -> uvicorn on 127.0.0.1 (all interfaces only in the network mode, ADR-025).
 A second instance over the same data folder exits with EXIT_ALREADY_RUNNING before touching the
 database; an unavailable data folder or a vanished database exits with EXIT_DATA_UNAVAILABLE.
+
+Controlled shutdown (REL-P1E-02): a stop request (the file STOP_FILE, a Windows service STOP or
+SIGTERM) makes the listeners stop accepting, waits for the requests in progress, then the backup
+scheduler and any backup or restore, and only then exits. A start after an unclean end (the PID
+file was left behind) checks the database with integrity_check before serving; a schema upgrade
+that was interrupted is undone from the copy taken right before it.
 """
 
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import sys
 from datetime import datetime
@@ -21,17 +28,26 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 
 from app.core.config import Settings, data_root, resource
+from app.core.durable import fsync_file, write_durably
 from app.persistence.database import build_engine, resolve_database_url
 
 EXIT_ALREADY_RUNNING = 3
 EXIT_DATA_UNAVAILABLE = 4
 # Not enough room for the copy taken before a schema upgrade: nothing was migrated (P1-E).
 EXIT_NO_SPACE = 5
+# The database failed integrity_check after an unclean end: nothing is served (REL-P1E-02).
+EXIT_DATABASE_DAMAGED = 8
 # Copies taken before schema upgrades kept per folder; older ones are removed after a new one.
 PRE_UPGRADE_KEPT = 3
 LOCK_FILE = "locacontrol.lock"
 # Written after the first successful preparation: from then on a missing database is an error.
 MARKER = "locacontrol.installed"
+# Written while serving and removed only at a normal end (REL-P1E-02).
+PID_FILE = "locacontrol.pid"
+# Created by `LocaControl.exe parar`: the running server finishes what it is doing and exits.
+STOP_FILE = "locacontrol.stop"
+# Present only while a schema upgrade runs: found at a start, the upgrade was interrupted.
+UPGRADE_MARKER = "atualizacao-em-andamento.json"
 
 
 class AlreadyRunning(RuntimeError):
@@ -43,6 +59,10 @@ class DataUnavailable(RuntimeError):
 
 
 class NoSpace(RuntimeError):
+    pass
+
+
+class DatabaseDamaged(RuntimeError):
     pass
 
 
@@ -191,9 +211,156 @@ def migrate(settings: Settings) -> Path | None:
         copy = copy_database(database, folder)
         prune_pre_upgrade(folder)
         print(f"Cópia do banco antes da atualização: {copy}", flush=True)
+    marker = data_root() / UPGRADE_MARKER
+    write_durably(
+        marker,
+        json.dumps(
+            {
+                "copy": str(copy) if copy else None,
+                "new_database": copy is None,
+                "from": sorted(current),
+                "started": datetime.now().isoformat(timespec="seconds"),
+            }
+        ).encode("utf-8"),
+    )
     print("Aplicando atualizações do banco de dados...", flush=True)
-    command.upgrade(config, "head")
+    command.upgrade(config, "head")  # one SQLite transaction (migrations/env.py)
+    marker.unlink(missing_ok=True)
     return copy
+
+
+def integrity(database: Path) -> str:
+    """PRAGMA integrity_check ("ok" or the problems found); opening the file also rolls back a
+    transaction left unfinished. A file SQLite cannot even read reports its error."""
+    try:
+        connection = sqlite3.connect(database)
+        try:
+            return "\n".join(row[0] for row in connection.execute("PRAGMA integrity_check"))
+        finally:
+            connection.close()
+    except sqlite3.DatabaseError as error:
+        return f"erro ao ler o banco: {error}"
+
+
+def remove_partial_backups(settings: Settings, database: Path) -> int:
+    """Hidden work files of a backup or import cut short by an unclean end (never a finished set).
+    Only called while this process holds the installation lock, so nothing is writing them."""
+    saved = saved_limits(database)
+    folders = {Path(settings.backup_directory)}
+    for key in ("directory", "mirror_directory"):
+        if saved.get(key):
+            folders.add(Path(saved[key]))
+    removed = 0
+    for folder in folders:
+        for pattern in (".locacontrol_*", ".import-*.part"):
+            try:
+                for path in folder.glob(pattern):
+                    path.unlink(missing_ok=True)
+                    removed += 1
+            except OSError:
+                continue
+    return removed
+
+
+def revision(database: Path) -> set[str]:
+    connection = sqlite3.connect(database)
+    try:
+        return {row[0] for row in connection.execute("SELECT version_num FROM alembic_version")}
+    except sqlite3.Error:
+        return set()
+    finally:
+        connection.close()
+
+
+def sidecars(database: Path) -> list[Path]:
+    return [database.with_name(database.name + suffix) for suffix in ("-journal", "-wal", "-shm")]
+
+
+def restore_copy(copy: Path, database: Path):
+    """The pre-upgrade copy back in place. Its journal is dropped first: a journal left by the
+    interrupted upgrade must never be rolled back into the restored file."""
+    part = database.with_name(database.name + ".restaurando")
+    shutil.copyfile(copy, part)
+    fsync_file(part)
+    for path in sidecars(database):
+        path.unlink(missing_ok=True)
+    os.replace(part, database)
+
+
+def recover_interrupted_upgrade(settings: Settings, root: Path) -> str | None:
+    """A schema upgrade that did not finish (process killed, power loss, failed migration).
+
+    The server serves nothing while it migrates, so the copy taken right before the upgrade holds
+    exactly the data of that moment: putting it back loses nothing, whatever state the upgrade
+    left. Without a usable copy, the database is accepted only if it is intact and at the old or
+    at the new revision; otherwise nothing is touched and the start is refused.
+    """
+    marker = root / UPGRADE_MARKER
+    if not marker.exists():
+        return None
+    try:
+        info = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        info = {}
+    database = database_file(settings)
+    copy = Path(info["copy"]) if info.get("copy") else None
+    if database is None:
+        message = "Atualização interrompida anterior ignorada (banco que não é arquivo SQLite)."
+    elif copy and copy.is_file() and integrity(copy) == "ok":
+        restore_copy(copy, database)
+        message = (
+            "A atualização anterior do banco foi interrompida. O banco voltou à cópia feita "
+            f"imediatamente antes dela ({copy.name}), sem perda de dados; a atualização será "
+            "refeita agora."
+        )
+    elif info.get("new_database"):
+        for path in (database, *sidecars(database)):
+            path.unlink(missing_ok=True)
+        message = "A criação do banco foi interrompida; ele será criado de novo (estava vazio)."
+    else:
+        config = Config(str(resource("backend/alembic.ini")))
+        heads = set(ScriptDirectory.from_config(config).get_heads())
+        known = {frozenset(info.get("from", [])), frozenset(heads)}
+        if not (
+            database.is_file()
+            and integrity(database) == "ok"
+            and frozenset(revision(database)) in known
+        ):
+            raise DatabaseDamaged(
+                "A atualização anterior do banco foi interrompida e a cópia feita antes dela não "
+                f"está disponível ({copy or 'sem registro'}). Nada foi alterado. Restaure um "
+                "backup (docs/ADMIN_GUIDE.md, restauração manual) ou procure o suporte."
+            )
+        message = "A atualização anterior foi interrompida; o banco está íntegro e será atualizado."
+    marker.unlink(missing_ok=True)
+    return message
+
+
+def check_after_unclean_end(settings: Settings, root: Path) -> str | None:
+    """The PID file outlives the server only when it did not end normally (forced stop, crash,
+    power loss). SQLite's journal makes each transaction atomic, but that is checked, not
+    assumed: integrity_check must pass before anything is served."""
+    pid_file = root / PID_FILE
+    if not pid_file.exists():
+        return None
+    database = database_file(settings)
+    if database is None or not database.is_file():
+        pid_file.unlink(missing_ok=True)
+        return None
+    result = integrity(database)
+    if result != "ok":
+        raise DatabaseDamaged(
+            "O LocaControl não foi encerrado normalmente e o banco falhou na verificação de "
+            f"integridade ({result[:200]}). Nada foi servido nem alterado. Restaure o backup mais "
+            "recente (docs/ADMIN_GUIDE.md) antes de voltar a usar o sistema."
+        )
+    removed = remove_partial_backups(settings, database)
+    pid_file.unlink(missing_ok=True)
+    return (
+        "O LocaControl não foi encerrado normalmente da última vez; o banco foi verificado e "
+        "está íntegro."
+        + (f" {removed} arquivo(s) de backup incompleto(s) removido(s)." if removed else "")
+    )
 
 
 def prepare(settings: Settings) -> bool:
@@ -208,9 +375,6 @@ def prepare(settings: Settings) -> bool:
         print('PRIMEIRO ACESSO: usuário "admin" e senha "admin".', flush=True)
         print("O sistema exigirá uma nova senha (12 caracteres ou mais).", flush=True)
     return created
-
-
-PID_FILE = "locacontrol.pid"
 
 
 def listeners(settings: Settings, port: int, https_port: int, tls_files=None) -> list[dict]:
@@ -271,9 +435,13 @@ def prepare_tls(settings: Settings):
         return None
 
 
-def serve(app, endpoints: list[dict]):
+def serve(app, endpoints: list[dict], stop_requested=None, on_started=None):
     """One process, one application, one or two listeners. The first runs the application's
-    lifespan; the second starts after it and the two stop together."""
+    lifespan; the second starts after it and the two stop together.
+
+    `stop_requested()` is polled; when true the listeners stop accepting and uvicorn waits for the
+    requests in progress before the lifespan ends (which waits for backups). `on_started()` runs
+    once every listener accepts connections."""
     import asyncio
 
     import uvicorn
@@ -283,20 +451,37 @@ def serve(app, endpoints: list[dict]):
         for index, endpoint in enumerate(endpoints)
     ]
 
+    async def watch():
+        announced = False
+        while not all(server.should_exit for server in servers):
+            if not announced and all(server.started for server in servers):
+                announced = True
+                if on_started:
+                    on_started()
+            if stop_requested and stop_requested():
+                print("Encerramento pedido: terminando o que está em andamento...", flush=True)
+                for server in servers:
+                    server.should_exit = True
+                return
+            await asyncio.sleep(0.25)
+
     async def run():
         first = asyncio.create_task(servers[0].serve())
         while not servers[0].started and not first.done():
             await asyncio.sleep(0.05)
         tasks = [first] + [asyncio.create_task(server.serve()) for server in servers[1:]]
+        watcher = asyncio.create_task(watch())
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for server in servers:
             server.should_exit = True
         await asyncio.gather(*tasks, return_exceptions=True)
+        watcher.cancel()
 
     asyncio.run(run())
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, stop_event=None, on_started=None) -> int:
+    """`stop_event` (threading.Event) and `on_started` come from the Windows service host."""
     parser = argparse.ArgumentParser(description="Servidor do LocaControl")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--https-port", type=int, default=None)
@@ -315,6 +500,7 @@ def main(argv: list[str] | None = None) -> int:
         print(error, file=sys.stderr, flush=True)
         return EXIT_ALREADY_RUNNING
     try:
+        (root / STOP_FILE).unlink(missing_ok=True)  # a request left from a previous run
         settings = Settings()
         try:
             check_database(settings, root)
@@ -322,10 +508,35 @@ def main(argv: list[str] | None = None) -> int:
             print(error, file=sys.stderr, flush=True)
             return EXIT_DATA_UNAVAILABLE
         try:
+            for message in (
+                recover_interrupted_upgrade(settings, root),
+                check_after_unclean_end(settings, root),
+            ):
+                if message:
+                    print(message, flush=True)
+        except DatabaseDamaged as error:
+            print(error, file=sys.stderr, flush=True)
+            return EXIT_DATABASE_DAMAGED
+        try:
             prepare(settings)
         except NoSpace as error:
             print(error, file=sys.stderr, flush=True)
             return EXIT_NO_SPACE
+        except Exception as error:
+            # A failed migration: undone now from the copy, so no half-upgraded database is left.
+            print(f"A atualização do banco falhou: {error}", file=sys.stderr, flush=True)
+            try:
+                message = recover_interrupted_upgrade(settings, root)
+            except DatabaseDamaged as damaged:
+                print(damaged, file=sys.stderr, flush=True)
+                return EXIT_DATABASE_DAMAGED
+            if message:
+                print(
+                    message.replace(" será refeita agora", " será tentada no próximo início"),
+                    file=sys.stderr,
+                    flush=True,
+                )
+            raise
         (root / MARKER).touch()
         if args.prepare:
             return 0
@@ -337,11 +548,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Rede da loja: estações em https://<este computador>:{https_port}/", flush=True)
         from app.main import create_app
 
+        stop_file = root / STOP_FILE
+
+        def stop_requested() -> bool:
+            return stop_file.exists() or bool(stop_event and stop_event.is_set())
+
         (root / PID_FILE).write_text(str(os.getpid()), encoding="ascii")
-        try:
-            serve(create_app(settings), endpoints)
-        finally:
-            (root / PID_FILE).unlink(missing_ok=True)
+        serve(create_app(settings), endpoints, stop_requested, on_started)
+        # Only a normal end removes it: left behind, the next start checks the database.
+        (root / PID_FILE).unlink(missing_ok=True)
+        stop_file.unlink(missing_ok=True)
+        print("LocaControl encerrado normalmente.", flush=True)
         return 0
     finally:
         lock.close()

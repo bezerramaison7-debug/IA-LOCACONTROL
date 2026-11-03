@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -27,7 +28,7 @@ from app.network.routes import record_reuse
 from app.network.routes import router as stations_router
 from app.network.stations import registry_for
 from app.network.tls import TLS_FOLDER, LocalAuthority
-from app.ops.backup import BackupManager, BackupScheduler
+from app.ops.backup import OPERATION_LOCK, BackupManager, BackupScheduler
 from app.ops.maintenance import MaintenanceGate, MaintenanceMiddleware
 from app.ops.routes import router as backups_router
 from app.persistence.database import build_engine
@@ -61,6 +62,12 @@ def prepare_installation(engine, local_mode: bool):
         logging.getLogger("app").warning("Identificação da instalação adiada: banco indisponível.")
 
 
+def wait_for_operations():
+    """Returns once no backup, import of a backup set or restore holds the operation lock."""
+    with OPERATION_LOCK:
+        pass
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     configure_logging()
@@ -79,8 +86,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 yield
             finally:
+                # Controlled shutdown (REL-P1E-02): uvicorn already waited for the requests in
+                # progress; now the scheduler's backup, then any backup or restore holding the lock.
                 if scheduler:
-                    scheduler.stop()
+                    await asyncio.to_thread(scheduler.stop, True)
+                await asyncio.to_thread(wait_for_operations)
         finally:
             app.state.engine.dispose()
 
