@@ -60,13 +60,28 @@ Um backup é um arquivo `.zip` com tudo o que é necessário para recuperar o si
 
 Em **Gestão → Backups** (de fábrica, somente administrador):
 
+- **Proteção automática** (primeiro cartão) mostra a **última cópia concluída**, o espaço ocupado pelos backups, as execuções recentes (automáticas, manuais e anteriores a restaurações) com o resultado de cada uma e, quando houver algo a fazer, um aviso: última tentativa com falha, backup automático desativado, nenhum backup ainda, último backup antigo demais para a frequência escolhida ou falha na segunda cópia. O mesmo aviso aparece na **Visão geral** para quem gerencia backups, com o atalho **Abrir Backups**.
 - **Fazer backup agora** cria um conjunto imediatamente.
-- **Backup automático**: marque **Fazer backup automático todos os dias**, escolha o **Horário do backup diário** e **Quantos backups manter** e clique em **Salvar configuração**. O backup do dia é feito na primeira verificação depois do horário, desde que o sistema esteja ligado. Ele só é dispensado se já existir um backup feito **depois do horário configurado**: um backup manual feito de manhã não substitui o da noite. Os mais antigos além do limite são removidos; as cópias de segurança de restauração são mantidas.
-- **Pasta dos backups**: em branco, usa a pasta padrão `data\backups`. Informe o caminho completo de outra pasta para gravar em outro disco.
+- **Backup automático**: vem **ligado, a cada 20 minutos**, numa instalação nova. Em **Frequência** escolha **A cada 20 minutos (recomendado)**, **A cada 60 minutos** ou **Uma vez por dia, no horário escolhido** (este mostra o campo **Horário do backup diário**). Uma configuração salva antes desta versão continua diária, no mesmo horário, até ser alterada. Clique em **Salvar configuração**.
+  - Nos modos de 20 e 60 minutos, um backup é feito quando o último conjunto (automático ou manual) tem a idade do intervalo. Se nada mudou nos dados desde o último conjunto, o sistema só registra a verificação ("última verificação sem alterações") em vez de repetir a cópia.
+  - Uma tentativa que falha (disco cheio, pasta indisponível) fica registrada com o motivo, gera o aviso e é repetida depois de alguns minutos. Dois backups nunca rodam ao mesmo tempo: se um backup manual ou uma restauração estiver em andamento, o automático espera a próxima verificação.
+  - **O backup automático só acontece com este computador e o LocaControl ligados.** Com o computador desligado ou o sistema parado nenhuma cópia é feita; ao religar, o primeiro backup sai em até um minuto.
+- **Dias com cópia guardada**: todas as cópias das últimas 24 horas ficam guardadas; dos dias anteriores fica a última cópia de cada dia, até o número de dias informado (padrão 14). As cópias anteriores a restaurações e os backups importados nunca são apagados pela retenção.
+- **Pasta dos backups**: em branco, usa a pasta padrão `backups` da pasta de dados. Pode ser uma pasta em outro disco: a restauração funciona do mesmo jeito.
+- **Segunda cópia (opcional)**: cada backup concluído é copiado e conferido também nesta pasta, que deve estar em outro disco ou pendrive que fique conectado. A retenção vale também lá. Se o disco não estiver disponível, o backup principal vale e o aviso "a segunda cópia falhou" aparece.
 - **Verificar** confere cada arquivo do conjunto e a integridade do banco. O resultado esperado é "Backup íntegro: pode ser restaurado."
 - **Baixar** entrega o `.zip` para guardar fora do computador. O arquivo passa pela memória do navegador; conjuntos muito grandes devem ser copiados diretamente da pasta de backups.
 
-**Guarde cópias fora deste computador.** Backup na mesma máquina não protege contra roubo, incêndio ou falha do disco. Baixe o conjunto periodicamente para um pendrive, HD externo ou serviço de armazenamento da locadora.
+**Guarde cópias fora deste computador.** Backup na mesma máquina não protege contra roubo, incêndio ou falha do disco. Use a segunda cópia num disco externo e, periodicamente, leve um conjunto para fora da loja.
+
+### Recuperar um backup guardado em outro disco
+
+Para restaurar um `.zip` que está num pendrive, HD externo ou em outro computador (e não na pasta de backups):
+
+1. Conecte o disco a este computador.
+2. Em **Gestão → Backups**, cartão **Recuperar backup de outro disco**, escolha o arquivo em **Arquivo do backup (.zip)** e clique em **Importar backup**.
+3. O sistema confere o arquivo inteiro antes de aceitá-lo (manifesto, códigos de verificação e integridade do banco). Se for aceito, ele aparece na lista com o nome `locacontrol_<data do backup>_importado.zip` e o tipo "Importado de outro disco". Um arquivo reprovado não é copiado; o mesmo backup já presente na pasta é recusado com o nome do conjunto existente. Nada nos dados atuais muda nesta etapa.
+4. Restaure-o pela lista, como abaixo.
 
 ### Restaurar
 
@@ -77,15 +92,27 @@ Restaurar faz o sistema voltar exatamente ao estado do backup escolhido. Tudo o 
 3. Clique em **Restaurar este backup**.
 4. O sistema grava antes uma cópia de segurança do estado atual (`..._pre-restore.zip`, que aparece na lista com o tipo "Anterior a uma restauração"), restaura o banco e os arquivos e pede que todos entrem novamente (na edição local o sistema volta a abrir sozinho).
 
-Nada é apagado: as pastas de arquivos anteriores vão para `replaced_AAAA-MM-DD_HHMMSS` dentro da pasta de backups, e a cópia `_pre-restore` permite desfazer a restauração. Um backup feito por uma versão mais nova do sistema é recusado: atualize o LocaControl antes.
+Nada é apagado: as pastas de arquivos anteriores vão para `replaced_AAAA-MM-DD_HHMMSS`, ao lado das pastas de dados (na edição instalada, dentro da pasta de dados), e a cópia `_pre-restore` permite desfazer a restauração. Um backup feito por uma versão mais nova do sistema é recusado: atualize o LocaControl antes.
 
 **Modo manutenção e desfazer automático.** Durante a restauração o sistema entra em manutenção: quem tentar usar o sistema recebe "Sistema em manutenção (restauração em andamento). Tente novamente em instantes." e `/health` responde 503 com status `maintenance`. A restauração só começa depois que as operações em andamento terminam; se elas não terminarem em 30 segundos, ela desiste sem alterar nada (tente de novo). Se algum passo falhar depois de o banco ter sido substituído (mover pastas, atualizar a estrutura do banco), o sistema volta sozinho ao estado anterior a partir da cópia `_pre-restore` e das pastas em `replaced_*`, registra o motivo no log e avisa que nada foi alterado. Se nem isso for possível, a mensagem informa o nome da cópia `_pre-restore` para restauração manual.
 
-**Limite: mesmo disco.** A restauração só funciona com a pasta de backups no mesmo disco dos dados (banco, importações, documentos e fiscal), porque as pastas são trocadas por renomeação. Se a pasta de backups estiver em outro disco (pendrive, HD externo), o sistema recusa a restauração antes de alterar qualquer coisa. Para restaurar uma cópia guardada em outro disco, copie o arquivo `.zip` para uma pasta no disco dos dados, configure-a como pasta de backups e restaure de lá. Gravar backups em outro disco continua permitido.
+**Pasta de backups em outro disco.** Desde a proteção automática (ADR-024) a restauração prepara os arquivos ao lado das pastas de dados, no disco delas, e só lê o `.zip` da pasta de backups. Por isso ela funciona com a pasta de backups em outro disco (pendrive, HD externo). Restaurar a partir da segunda cópia ou de um disco que não é a pasta de backups: use **Importar backup** (seção anterior).
 
-**O que o sistema garante numa queda de energia.** Uma operação só é confirmada na tela depois de gravada no banco. Uma queda (ou um travamento do Windows) no meio de uma gravação não corrompe o banco nem deixa operação pela metade: na próxima abertura o SQLite descarta o que não foi confirmado. Mas a operação que ainda não tinha sido confirmada no instante da queda é perdida e precisa ser lançada de novo. Não há promessa de perda zero em qualquer falha de energia; o backup diário fora do computador continua sendo a proteção contra perda do disco.
+**O que o sistema garante numa queda de energia.** Uma operação só é confirmada na tela depois de gravada no banco. Uma queda (ou um travamento do Windows) no meio de uma gravação não corrompe o banco nem deixa operação pela metade: na próxima abertura o SQLite descarta o que não foi confirmado. Mas a operação que ainda não tinha sido confirmada no instante da queda é perdida e precisa ser lançada de novo. Não há promessa de perda zero em qualquer falha de energia; os backups automáticos, com uma cópia fora do computador, continuam sendo a proteção contra perda do disco. Formulários longos em preenchimento têm rascunho automático (seção 4.1).
 
 Recomendação: uma vez por trimestre, restaure um backup em outro computador de teste para confirmar que a recuperação funciona.
+
+### 4.1 Rascunhos automáticos dos formulários
+
+Os formulários longos — orçamento (novo ou em edição), contrato direto (novo ou em edição), retirada, devolução e renovação — guardam um **rascunho automático** no servidor cerca de um segundo depois de cada alteração. O rascunho é o formulário como foi digitado, numa tabela separada (`form_drafts`): **não movimenta estoque, não confirma contrato, não gera documento e não aparece em relatórios**. Ele não se confunde com o orçamento ou o contrato "em rascunho", que já são registros salvos.
+
+- **Recuperação**: ao reabrir o mesmo formulário (mesmo depois de fechar o navegador ou reiniciar o computador), aparece "Há um rascunho salvo automaticamente em …" com **Recuperar rascunho** e **Descartar rascunho**. Enquanto não houver escolha, nada é salvo por cima do rascunho anterior. Se o registro foi alterado depois do rascunho (outro funcionário mexeu no contrato), o aviso pede conferência antes do envio.
+- **Retirada e devolução** guardam também a chave da operação: enviar de novo um rascunho de uma operação que já foi registrada é reconhecido pelo servidor como a mesma operação, nunca como uma segunda.
+- **Descarte**: automático quando o formulário é enviado com sucesso, ou pelo botão **Descartar rascunho**.
+- **Expiração**: 7 dias depois da última alteração; o rascunho vencido deixa de ser oferecido e é apagado.
+- Cada rascunho pertence a quem o digitou (na edição local, ao computador). Rascunhos entram nos backups, como o resto da base.
+- Se o servidor estiver fora do ar, o formulário continua aberto e a linha abaixo dele avisa "Rascunho não salvo agora"; o sistema tenta de novo sozinho.
+- Na edição local, a expiração ou a renovação da sessão não fecha o formulário: o sistema abre uma sessão nova sem sair da tela. Uma leitura é repetida uma vez; um envio nunca é repetido sozinho — aparece "A sessão deste computador foi renovada automaticamente. Nada foi gravado: confira os dados e envie novamente."
 
 ## 5. Estoque e contratos
 

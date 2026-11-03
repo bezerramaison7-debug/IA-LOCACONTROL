@@ -30,7 +30,7 @@ it('gives a neutral panel, without request or error, to a profile without contra
   })
   renderPage(<Dashboard />, request, {
     permissions: adminSession.user.permissions.filter(
-      (code) => !['contracts.read', 'quotes.write'].includes(code),
+      (code) => !['contracts.read', 'quotes.write', 'backups.manage'].includes(code),
     ),
   })
   expect(screen.getByText(/não fazem parte do seu perfil/)).toBeInTheDocument()
@@ -40,4 +40,23 @@ it('gives a neutral panel, without request or error, to a profile without contra
   expect(shortcuts.getByRole('link', { name: /Clientes/ })).toBeInTheDocument()
   expect(shortcuts.queryByRole('link', { name: /Contratos/ })).toBeNull()
   expect(screen.queryByRole('link', { name: 'Novo orçamento' })).toBeNull()
+})
+
+it('warns who manages backups when the last backup failed, with a link to Backups', async () => {
+  const request = mockRequest((path) =>
+    path === '/backups/status'
+      ? {
+          runs: [],
+          alert: { level: 'danger', message: 'A última tentativa de backup falhou.' },
+          requires_running: 'Computador ligado.',
+        }
+      : dashboard,
+  )
+  renderPage(<Dashboard />, request)
+  const alert = await screen.findByRole('alert', { name: 'Aviso de backup' })
+  expect(alert).toHaveTextContent('A última tentativa de backup falhou.')
+  expect(within(alert).getByRole('link', { name: 'Abrir Backups' })).toHaveAttribute(
+    'href',
+    '/backups',
+  )
 })

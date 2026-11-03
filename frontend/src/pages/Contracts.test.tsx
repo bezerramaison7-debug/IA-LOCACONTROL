@@ -268,8 +268,11 @@ function setup(request: ReturnType<typeof api>, entry = '/', without: string[] =
     </QueryClientProvider>,
   )
 }
+/** Writes to the records; automatic drafts (/drafts) have their own tests. */
 const writes = (request: ReturnType<typeof api>) =>
-  request.mock.calls.filter(([, method]) => method && method !== 'GET')
+  request.mock.calls.filter(
+    ([path, method]) => method && method !== 'GET' && !String(path).startsWith('/drafts/'),
+  )
 
 it('renders the contract list with pt-BR values, named status and the derived filters', async () => {
   const request = api()

@@ -44,10 +44,14 @@ def test_backup_set_contains_database_files_and_manifest(client, admin, base):
     person, item = base
     document(client, admin, person, item)
     created = backup(client, admin)
-    assert created["revision"] == "0010_backups" and created["kind"] == "manual"
+    assert created["revision"] == "0011_drafts" and created["kind"] == "manual"
     overview = client.get("/api/backups").json()
     assert [entry["name"] for entry in overview["items"]] == [created["name"]]
-    assert overview["config"]["enabled"] is False and overview["config"]["keep"] == 14
+    # Instalação nova (sem configuração salva): protegida desde o início, a cada 20 minutos.
+    assert overview["config"]["enabled"] is True and overview["config"]["keep"] == 14
+    assert overview["config"]["frequency"] == "20min"
+    assert overview["status"]["last_success"]["name"] == created["name"]
+    assert overview["total_size"] == created["size"]
     archive = client.get(f"/api/backups/{created['name']}/download")
     assert archive.status_code == 200 and archive.content.startswith(b"PK")
     with zipfile.ZipFile(BytesIO(archive.content)) as content:
@@ -58,7 +62,7 @@ def test_backup_set_contains_database_files_and_manifest(client, admin, base):
     assert [n for n in names if n.startswith("documents/")] == [
         "documents/" + stored_documents(client)[0]
     ]
-    assert manifest["revision"] == "0010_backups" and manifest["format"] == 1
+    assert manifest["revision"] == "0011_drafts" and manifest["format"] == 1
     assert manifest["files"]["locacontrol.db"] == hashlib.sha256(database).hexdigest()
     report = client.post(f"/api/backups/{created['name']}/verify", headers=admin[1]).json()
     assert report["ok"] is True and report["users"] == 1 and report["files"] == 2
@@ -168,7 +172,14 @@ def test_restore_refuses_a_set_from_an_unknown_version(client, admin, base):
 
 def test_configuration_schedule_and_retention(client, admin):
     def configure(**values):
-        payload = {"enabled": True, "time": "22:00", "keep": 2, "directory": "", **values}
+        payload = {
+            "enabled": True,
+            "frequency": "daily",
+            "time": "22:00",
+            "keep": 2,
+            "directory": "",
+            **values,
+        }
         return client.put("/api/backups/config", json=payload, headers=admin[1])
 
     assert configure(time="25:00").status_code == 422

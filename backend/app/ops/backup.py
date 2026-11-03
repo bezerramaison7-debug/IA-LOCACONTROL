@@ -1,18 +1,26 @@
 """Backup sets: one zip with a consistent database copy, every stored file and a manifest.
 
 Restoring never deletes: the current state is backed up first and replaced folders are moved
-aside. Only SQLite file databases are supported here.
+aside, next to the data folders (so the backup folder may live on another disk). Only SQLite
+file databases are supported here.
+
+Automatic protection (ADR-024): every 20 minutes by default (60 or daily on request), a record
+of every run beside the database, retention of recent and daily copies, an optional second
+copy in another folder and import of a set kept elsewhere.
 """
 
 import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import sqlite3
 import threading
+import time
+import uuid
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from alembic import command
@@ -30,19 +38,32 @@ from app.persistence.database import resolve_database_url
 logger = logging.getLogger(__name__)
 # One backup or restore at a time in this process, including the scheduler.
 OPERATION_LOCK = threading.RLock()
-NAME = re.compile(r"^locacontrol_(\d{4}-\d{2}-\d{2})_(\d{6})(_pre-restore)?\.zip$")
+# Regular sets have no suffix; safety copies and imported sets are never pruned.
+NAME = re.compile(r"^locacontrol_(\d{4}-\d{2}-\d{2})_(\d{6})(_pre-restore|_importado)?\.zip$")
+SUFFIX_KINDS = {"": "backup", "_pre-restore": "pre-restore", "_importado": "imported"}
 SETTING_KEY = "backup"
-DEFAULTS = {"enabled": False, "time": "22:00", "keep": 14, "directory": ""}
+FREQUENCIES = {"20min": 20, "60min": 60, "daily": None}
+# A new installation (no saved row) is protected from the start: every 20 minutes.
+DEFAULTS = {
+    "enabled": True,
+    "frequency": "20min",
+    "time": "22:00",
+    "keep": 14,
+    "directory": "",
+    "mirror_directory": "",
+}
+# Rows saved before ADR-024 had no frequency: they keep their daily schedule.
+LEGACY_FREQUENCY = "daily"
 DATABASE_MEMBER = "locacontrol.db"
 MANIFEST = "manifest.json"
-
-
-def volume(path: Path):
-    """Device id of the nearest existing ancestor; data folders may not exist yet."""
-    for candidate in (Path(path), *Path(path).parents):
-        if candidate.exists():
-            return candidate.stat().st_dev
-    return None
+# Every regular set of the last day is kept, besides the newest set of each of `keep` days.
+RECENT_HOURS = 24
+# After a failed automatic run, try again after this many minutes (or the interval, if shorter).
+RETRY_MINUTES = 5
+HISTORY_FILE = "backup-history.json"
+HISTORY_LIMIT = 100
+# An imported set larger than this is refused before it fills the disk.
+IMPORT_MAX_BYTES = 8 * 1024**3
 
 
 def sha256(stream) -> str:
@@ -52,10 +73,27 @@ def sha256(stream) -> str:
     return digest.hexdigest()
 
 
-def due(config: dict, now: datetime, names: list[str]) -> bool:
-    """True when the daily backup time has passed and no regular set exists for today."""
+def moment(match: re.Match) -> datetime:
+    return datetime.strptime(match[1] + match[2], "%Y-%m-%d%H%M%S").replace(tzinfo=BUSINESS_TZ)
+
+
+def regular_moments(names: list[str]) -> list[datetime]:
+    return sorted(moment(match) for name in names if (match := NAME.match(name)) and not match[3])
+
+
+def due(config: dict, now: datetime, names: list[str], unchanged_at: datetime | None = None):
+    """True when an automatic backup should run now.
+
+    Interval: the newest regular set (manual ones count) or the last "nothing changed" check is
+    at least one interval old. Daily: the configured time has passed and no regular set exists
+    for today since that time.
+    """
     if not config["enabled"]:
         return False
+    minutes = FREQUENCIES.get(config.get("frequency", LEGACY_FREQUENCY))
+    if minutes:
+        moments = regular_moments(names) + ([unchanged_at] if unchanged_at else [])
+        return not moments or now - max(moments) >= timedelta(minutes=minutes)
     hour, minute = (int(part) for part in config["time"].split(":"))
     if (now.hour, now.minute) < (hour, minute):
         return False
@@ -65,6 +103,26 @@ def due(config: dict, now: datetime, names: list[str]) -> bool:
         (match := NAME.match(name)) and match[1] == today and match[2] >= since and not match[3]
         for name in names
     )
+
+
+def retained(names: list[str], keep: int, now: datetime) -> set[str]:
+    """Regular sets kept: all from the last RECENT_HOURS, plus the newest of each of the
+    `keep` most recent days. With one set a day this is the former "keep N sets"."""
+    regular = sorted(
+        ((moment(match), name) for name in names if (match := NAME.match(name)) and not match[3]),
+        reverse=True,
+    )
+    keep_names = {name for when, name in regular if now - when < timedelta(hours=RECENT_HOURS)}
+    days: dict[str, str] = {}
+    for when, name in regular:
+        days.setdefault(when.strftime("%Y-%m-%d"), name)
+    for day in sorted(days, reverse=True)[: max(int(keep), 1)]:
+        keep_names.add(days[day])
+    return keep_names
+
+
+def now_iso() -> str:
+    return datetime.now(BUSINESS_TZ).isoformat(timespec="seconds")
 
 
 class BackupManager:
@@ -91,7 +149,9 @@ class BackupManager:
 
     def config(self, db) -> dict:
         row = db.get(AppSetting, SETTING_KEY)
-        return {**DEFAULTS, **(row.value if row else {})}
+        if row is None:
+            return dict(DEFAULTS)
+        return {**DEFAULTS, "frequency": LEGACY_FREQUENCY, **row.value}
 
     def directory(self, config: dict) -> Path:
         return Path(config["directory"] or self.settings.backup_directory)
@@ -103,8 +163,8 @@ class BackupManager:
             raise HTTPException(404, "Backup não encontrado.")
         return path
 
-    def listing(self, config: dict) -> list[dict]:
-        directory = self.directory(config)
+    def listing(self, config: dict, directory: Path | None = None) -> list[dict]:
+        directory = directory or self.directory(config)
         if not directory.is_dir():
             return []
         items = []
@@ -117,26 +177,170 @@ class BackupManager:
                         "name": path.name,
                         "size": stat.st_size,
                         "created_at": int(stat.st_mtime),
-                        "kind": "pre-restore" if match[3] else "backup",
+                        "kind": SUFFIX_KINDS[match[3] or ""],
                     }
                 )
         return sorted(items, key=lambda item: item["name"], reverse=True)
+
+    # ---- run history (a file beside the database, so it survives restores) ----------
+
+    def history_path(self) -> Path:
+        return self.database_path().parent / HISTORY_FILE
+
+    def history(self) -> dict:
+        try:
+            data = json.loads(self.history_path().read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError, HTTPException):
+            return {}
+
+    def _save_history(self, data: dict):
+        path = self.history_path()
+        part = path.with_name(f".{path.name}.part")
+        part.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        part.replace(path)
+
+    def record(self, run: dict, **extra):
+        """Appends one run; never lets a bookkeeping error hide the backup's own result."""
+        try:
+            data = self.history()
+            data["runs"] = ([run] + data.get("runs", []))[:HISTORY_LIMIT]
+            data["last_" + ("success" if run["status"] == "ok" else "failure")] = run
+            data.update(extra)
+            self._save_history(data)
+        except (OSError, HTTPException):
+            logger.exception("Não foi possível registrar o histórico do backup.")
+
+    def fingerprint(self) -> str:
+        """Changes whenever the database file or any stored file changes (size or mtime)."""
+        digest = hashlib.sha256()
+        database = self.database_path()
+        for path in (database, database.with_name(database.name + "-wal")):
+            if path.exists():
+                stat = path.stat()
+                digest.update(f"{path.name}|{stat.st_size}|{stat.st_mtime_ns}\n".encode())
+        for label, folder in self.folders().items():
+            if folder.is_dir():
+                for file in sorted(p for p in folder.rglob("*") if p.is_file()):
+                    stat = file.stat()
+                    relative = file.relative_to(folder).as_posix()
+                    digest.update(
+                        f"{label}/{relative}|{stat.st_size}|{stat.st_mtime_ns}\n".encode()
+                    )
+        return digest.hexdigest()
+
+    def status(self, config: dict, now: datetime | None = None) -> dict:
+        """What the Backups screen and the dashboard show, including the warning to raise."""
+        now = now or datetime.now(BUSINESS_TZ)
+        data = self.history()
+        runs = data.get("runs", [])
+        success, failure = data.get("last_success"), data.get("last_failure")
+        minutes = FREQUENCIES.get(config.get("frequency"))
+        alert = None
+        last_ok = datetime.fromisoformat(success["finished_at"]) if success else None
+        # The newest run decides: a success after a failure clears the warning.
+        failed_last = bool(runs) and runs[0]["status"] == "failed"
+        if failed_last:
+            alert = {
+                "level": "danger",
+                "message": "A última tentativa de backup falhou ("
+                + datetime.fromisoformat(failure["finished_at"]).strftime("%d/%m/%Y %H:%M")
+                + "): "
+                + failure.get("error", "motivo registrado no log")
+                + " Confira a pasta de backups e faça um backup agora.",
+            }
+        elif not config["enabled"]:
+            alert = {
+                "level": "warning",
+                "message": "O backup automático está desativado. Os dados só ficam protegidos "
+                "pelos backups feitos manualmente.",
+            }
+        elif last_ok is None:
+            alert = {"level": "warning", "message": "Nenhum backup concluído ainda."}
+        elif minutes and now - last_ok > timedelta(minutes=3 * minutes):
+            # Unchanged data is checked, not copied again: that check also counts as coverage.
+            checked = data.get("unchanged_at")
+            if not checked or now - datetime.fromisoformat(checked) > timedelta(
+                minutes=3 * minutes
+            ):
+                alert = {
+                    "level": "warning",
+                    "message": "O último backup concluído é de "
+                    + last_ok.strftime("%d/%m/%Y %H:%M")
+                    + ". O backup automático só roda com este computador e o LocaControl "
+                    "ligados.",
+                }
+        mirror = (success or {}).get("mirror") or {}
+        if alert is None and config.get("mirror_directory") and mirror.get("status") == "failed":
+            alert = {
+                "level": "warning",
+                "message": "O último backup foi concluído, mas a segunda cópia falhou: "
+                + mirror.get("error", "")
+                + " Confira se o outro disco está conectado.",
+            }
+        return {
+            "last_success": success,
+            "last_failure": failure,
+            "unchanged_at": data.get("unchanged_at"),
+            "runs": runs[:20],
+            "alert": alert,
+            "requires_running": "O backup automático só acontece enquanto este computador e "
+            "o LocaControl estão ligados. Com o computador desligado, nenhuma cópia é feita.",
+        }
 
     # ---- create and verify ---------------------------------------------------------
 
     def create(self, config: dict, kind: str = "manual") -> dict:
         with OPERATION_LOCK:
-            return self._create(config, kind)
+            started = now_iso()
+            fingerprint = None
+            try:
+                fingerprint = self.fingerprint()
+                result = self._create(config, kind)
+            except Exception as error:
+                message = error.detail if isinstance(error, HTTPException) else describe(error)
+                self.record(
+                    {
+                        "started_at": started,
+                        "finished_at": now_iso(),
+                        "kind": kind,
+                        "status": "failed",
+                        "error": message,
+                    }
+                )
+                logger.exception("Falha no backup (%s).", kind)
+                if isinstance(error, HTTPException):
+                    raise
+                raise HTTPException(500, "O backup falhou: " + message) from error
+            run = {
+                "started_at": started,
+                "finished_at": now_iso(),
+                "kind": kind,
+                "status": "ok",
+                "name": result["name"],
+                "size": result["size"],
+            }
+            if kind != "pre-restore":
+                run["mirror"] = self.mirror(config, result["name"])
+                result["mirror"] = run["mirror"]
+            # The fingerprint is taken before the copy: a change made meanwhile triggers the next.
+            self.record(run, fingerprint=fingerprint, unchanged_at=None)
+            return result
 
     def _create(self, config: dict, kind: str) -> dict:
         database = self.database_path()
         directory = self.directory(config)
         directory.mkdir(parents=True, exist_ok=True)
-        now = datetime.now(BUSINESS_TZ)
         suffix = "_pre-restore" if kind == "pre-restore" else ""
-        name = f"locacontrol_{now:%Y-%m-%d_%H%M%S}{suffix}.zip"
-        target = directory / name
-        if target.exists():
+        # Names have one-second resolution: two sets in the same second wait for the next one.
+        for _ in range(15):
+            now = datetime.now(BUSINESS_TZ)
+            name = f"locacontrol_{now:%Y-%m-%d_%H%M%S}{suffix}.zip"
+            target = directory / name
+            if not target.exists():
+                break
+            time.sleep(0.1)
+        else:
             raise HTTPException(409, "Já existe um backup deste mesmo segundo. Tente novamente.")
         copy_path, part = directory / f".{name}.db", directory / f".{name}.part"
         try:
@@ -181,12 +385,41 @@ class BackupManager:
             self.prune(config)
         return {"name": name, "size": target.stat().st_size, "kind": kind, "revision": revision}
 
-    def prune(self, config: dict):
-        """Retention applies to regular sets only; safety copies made by a restore are kept."""
-        regular = [item for item in self.listing(config) if item["kind"] == "backup"]
-        for item in regular[max(int(config["keep"]), 1) :]:
-            (self.directory(config) / item["name"]).unlink(missing_ok=True)
-            logger.info("Backup removido pela retenção: %s", item["name"])
+    def prune(self, config: dict, directory: Path | None = None):
+        """Retention applies to regular sets only; safety copies and imported sets are kept."""
+        directory = directory or self.directory(config)
+        names = [item["name"] for item in self.listing(config, directory)]
+        keep = retained(names, config["keep"], datetime.now(BUSINESS_TZ))
+        for name in names:
+            match = NAME.match(name)
+            if not match[3] and name not in keep:
+                (directory / name).unlink(missing_ok=True)
+                logger.info("Backup removido pela retenção: %s", name)
+
+    def mirror(self, config: dict, name: str) -> dict:
+        """Second copy in another folder (another disk): copied, checked, then pruned there."""
+        folder = config.get("mirror_directory") or ""
+        if not folder:
+            return {"status": "off"}
+        source = self.directory(config) / name
+        target = Path(folder) / name
+        part = target.with_name(f".{name}.part")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, part)
+            with source.open("rb") as original, part.open("rb") as copied:
+                if sha256(original) != sha256(copied):
+                    raise OSError("a cópia ficou diferente do original")
+            part.replace(target)
+            self.prune(config, Path(folder))
+            return {"status": "ok", "directory": folder}
+        except OSError as error:
+            try:
+                part.unlink(missing_ok=True)
+            except OSError:
+                pass  # the folder itself is gone: nothing was left behind
+            logger.exception("Falha na segunda cópia do backup %s.", name)
+            return {"status": "failed", "directory": folder, "error": describe(error)}
 
     def verify(self, path: Path) -> dict:
         errors, manifest, revision, users = [], {}, None, None
@@ -244,6 +477,57 @@ class BackupManager:
             "files": len(manifest.get("files", {})),
         }
 
+    # ---- import a set kept elsewhere (another disk, a USB drive, another computer) ----
+
+    def import_set(self, config: dict, stream, filename: str) -> dict:
+        """Copies an uploaded set into the backup folder, verified, as `<moment>_importado`.
+
+        Imported sets are outside retention, so the next automatic backup never removes one
+        waiting to be restored. Nothing in the live data changes here.
+        """
+        directory = self.directory(config)
+        directory.mkdir(parents=True, exist_ok=True)
+        part = directory / f".import-{uuid.uuid4().hex}.part"
+        try:
+            size = 0
+            with part.open("wb") as out:
+                while chunk := stream.read(1 << 20):
+                    size += len(chunk)
+                    if size > IMPORT_MAX_BYTES:
+                        raise HTTPException(413, "Arquivo grande demais para um backup.")
+                    out.write(chunk)
+            report = self.verify(part)
+            if not report["ok"]:
+                raise HTTPException(
+                    422,
+                    "O arquivo não é um backup íntegro do LocaControl: "
+                    + " ".join(report["errors"])
+                    + " Nada foi copiado.",
+                )
+            try:
+                created = datetime.fromisoformat(report["created_at"]).astimezone(BUSINESS_TZ)
+            except (TypeError, ValueError) as error:
+                raise HTTPException(422, "O backup não informa quando foi criado.") from error
+            name = f"locacontrol_{created:%Y-%m-%d_%H%M%S}_importado.zip"
+            with part.open("rb") as stream_copy:
+                digest = sha256(stream_copy)
+            for existing in (directory / name, directory / name.replace("_importado", "")):
+                if existing.is_file():
+                    with existing.open("rb") as current:
+                        if sha256(current) == digest:
+                            raise HTTPException(
+                                409,
+                                f"Este backup já está na pasta de backups ({existing.name}). "
+                                "Restaure-o pela lista.",
+                            )
+            if (directory / name).exists():
+                raise HTTPException(409, f"Já existe um backup importado com o nome {name}.")
+            os.replace(part, directory / name)
+        finally:
+            part.unlink(missing_ok=True)
+        logger.info("Backup importado: %s (arquivo enviado %s)", name, filename)
+        return {**report, "name": name, "size": size, "original_name": filename}
+
     # ---- restore -------------------------------------------------------------------
 
     def migrations(self) -> ScriptDirectory:
@@ -266,11 +550,12 @@ class BackupManager:
     def _undo(self, safety: Path, scratch, staging, replaced, moved, placed):
         """Puts back the folders moved aside and the database saved in the safety copy."""
         for label in placed:
-            shutil.move(str(self.folders()[label]), str(staging / label))
+            shutil.move(str(self.folders()[label]), str(staging[label]))
         for label in moved:
-            shutil.move(str(replaced / label), str(self.folders()[label]))
-        if replaced.is_dir() and not any(replaced.iterdir()):
-            replaced.rmdir()
+            shutil.move(str(replaced[label]), str(self.folders()[label]))
+        for folder in replaced.values():
+            if folder.parent.is_dir() and not any(folder.parent.iterdir()):
+                folder.parent.rmdir()
         with zipfile.ZipFile(safety) as archive:
             self._extract_database(archive, scratch)
         self._overwrite_database(scratch)
@@ -290,26 +575,22 @@ class BackupManager:
                 "Este backup foi criado por uma versão mais nova ou desconhecida do sistema. "
                 "Atualize o LocaControl antes de restaurá-lo.",
             )
-        self.database_path()  # SQLite only, checked before anything is touched
-        # shortcut: restore moves folders by rename, so it needs one volume; stage per volume to
-        # support a backup folder on another disk.
-        backups = volume(self.directory(config))
-        apart = [label for label, folder in self.folders().items() if volume(folder) != backups]
-        if apart:
-            raise HTTPException(
-                409,
-                "Restauração indisponível: a pasta de backups está em outro disco que os dados ("
-                + ", ".join(apart)
-                + "). Copie o arquivo de backup para uma pasta no mesmo disco dos dados, "
-                "configure-a como pasta de backups e restaure de lá. Nada foi alterado.",
-            )
+        database = self.database_path()  # SQLite only, checked before anything is touched
         head = scripts.get_current_head()
         with OPERATION_LOCK:
             safety = self.create(config, "pre-restore")
             stamp = datetime.now(BUSINESS_TZ).strftime("%Y-%m-%d_%H%M%S")
-            directory = self.directory(config)
-            replaced, staging = directory / f"replaced_{stamp}", directory / f".restore_{stamp}"
-            scratch = path.with_name(f".{path.name}.restore.db")
+            # Staging and the replaced folders sit beside each data folder, on its own disk:
+            # folders are swapped by rename there, whatever disk holds the backup set.
+            staging = {
+                label: folder.parent / f".restore_{stamp}" / label
+                for label, folder in self.folders().items()
+            }
+            replaced = {
+                label: folder.parent / f"replaced_{stamp}" / label
+                for label, folder in self.folders().items()
+            }
+            scratch = database.with_name(f".{name}.restore.db")
             # What has been changed so far, so a failure can be undone step by step.
             touched, moved, placed = False, [], []
             try:
@@ -317,8 +598,9 @@ class BackupManager:
                     # Everything is unpacked and checked before the live data is touched.
                     self._extract_database(archive, scratch)
                     for label in self.folders():
-                        root = (staging / label).resolve()
+                        root = staging[label]
                         root.mkdir(parents=True, exist_ok=True)
+                        root = root.resolve()
                         for member in archive.namelist():
                             if not member.startswith(label + "/") or member.endswith("/"):
                                 continue
@@ -335,11 +617,11 @@ class BackupManager:
                 for label, folder in self.folders().items():
                     if folder.exists():
                         # Moved aside, never deleted: nothing stored after the backup is lost.
-                        replaced.mkdir(parents=True, exist_ok=True)
-                        shutil.move(str(folder), str(replaced / label))
+                        replaced[label].parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(folder), str(replaced[label]))
                         moved.append(label)
                     folder.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(staging / label), str(folder))
+                    shutil.move(str(staging[label]), str(folder))
                     placed.append(label)
                 if report["revision"] != head:
                     self.engine.dispose()
@@ -353,7 +635,12 @@ class BackupManager:
                 if touched:
                     try:
                         self._undo(
-                            directory / safety["name"], scratch, staging, replaced, moved, placed
+                            self.directory(config) / safety["name"],
+                            scratch,
+                            staging,
+                            replaced,
+                            moved,
+                            placed,
                         )
                     except Exception:
                         logger.exception("Falha ao desfazer a restauração de %s", name)
@@ -371,34 +658,95 @@ class BackupManager:
                 ) from error
             finally:
                 scratch.unlink(missing_ok=True)
-                shutil.rmtree(staging, ignore_errors=True)
+                for folder in staging.values():
+                    shutil.rmtree(folder.parent, ignore_errors=True)
                 self.engine.dispose()
         logger.warning("Backup restaurado: %s (cópia prévia %s)", name, safety["name"])
+        aside = sorted({str(replaced[label].parent) for label in moved})
         return {
             "restored": name,
             "safety_backup": safety["name"],
             "revision": report["revision"],
             "upgraded_to": head if report["revision"] != head else None,
-            "replaced_files": replaced.name if replaced.exists() else None,
+            "replaced_files": "; ".join(aside) or None,
         }
 
 
+def describe(error: BaseException) -> str:
+    """Short, path-free reason for the history; the full trace goes to the log."""
+    if isinstance(error, PermissionError):
+        return "Sem permissão para gravar na pasta de backups."
+    if isinstance(error, FileNotFoundError):
+        return "Pasta ou arquivo não encontrado (disco desconectado?)."
+    if isinstance(error, OSError) and error.errno == 28:
+        return "Disco cheio."
+    if isinstance(error, OSError):
+        return "Erro de gravação no disco: " + (error.strerror or type(error).__name__) + "."
+    if isinstance(error, sqlite3.Error):
+        return "Erro ao copiar o banco de dados."
+    return str(error) or type(error).__name__
+
+
 class BackupScheduler(threading.Thread):
-    """Checks once a minute whether today's automatic backup is due."""
+    """Checks once a minute whether an automatic backup is due; never overlaps another one."""
 
     def __init__(self, manager: BackupManager, interval: float = 60):
         super().__init__(name="locacontrol-backup", daemon=True)
         self.manager = manager
         self.interval = interval
         self.stop_event = threading.Event()
+        self.failed_at: datetime | None = None
 
     def tick(self, now: datetime | None = None) -> dict | None:
-        with Session(self.manager.engine) as db:
-            config = self.manager.config(db)
-        names = [item["name"] for item in self.manager.listing(config)]
-        if due(config, now or datetime.now(BUSINESS_TZ), names):
-            return self.manager.create(config, "auto")
-        return None
+        # A restore or a manual backup in progress: skip this minute instead of queueing.
+        if not OPERATION_LOCK.acquire(blocking=False):
+            return None
+        try:
+            return self._tick(now or datetime.now(BUSINESS_TZ))
+        finally:
+            OPERATION_LOCK.release()
+
+    def _tick(self, now: datetime) -> dict | None:
+        manager = self.manager
+        with Session(manager.engine) as db:
+            config = manager.config(db)
+        if not config["enabled"]:
+            return None
+        history = manager.history()
+        unchanged = history.get("unchanged_at")
+        unchanged_at = datetime.fromisoformat(unchanged) if unchanged else None
+        names = [item["name"] for item in manager.listing(config)]
+        if not due(config, now, names, unchanged_at):
+            return None
+        minutes = FREQUENCIES.get(config["frequency"])
+        if self.failed_at and now - self.failed_at < timedelta(
+            minutes=min(minutes or RETRY_MINUTES, RETRY_MINUTES)
+        ):
+            return None
+        success = history.get("last_success")
+        last = success and success.get("name")
+        if (
+            minutes
+            and last in names
+            and history.get("fingerprint")
+            and history["fingerprint"] == manager.fingerprint()
+        ):
+            # Nothing changed since the last set: record the check instead of a duplicate copy.
+            data = manager.history()
+            data["unchanged_at"] = now.isoformat(timespec="seconds")
+            try:
+                manager._save_history(data)
+            except OSError:
+                logger.exception("Não foi possível registrar a verificação do backup.")
+            return {"skipped": True, "reason": "unchanged", "last": last}
+        try:
+            result = manager.create(config, "auto")
+        except Exception:
+            # Recorded in the history by create(); retried in a few minutes, not every minute.
+            self.failed_at = now
+            raise
+        self.failed_at = None
+        return result
 
     def run(self):
         while not self.stop_event.wait(self.interval):

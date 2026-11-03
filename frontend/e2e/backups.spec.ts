@@ -16,15 +16,19 @@ test('backups: configure, run now, verify, download and assisted restore', async
   await page.getByRole('button', { name: 'Salvar configuração' }).click()
   await expect(page.getByText(/Informe o caminho completo da pasta/)).toBeVisible()
   await page.getByLabel('Pasta dos backups').fill('')
-  await page.getByLabel(/Fazer backup automático todos os dias/).check()
+  // Protection status and the warning that the computer must be on.
+  await expect(page.getByText(/Última cópia concluída:/)).toBeVisible()
+  await expect(page.getByText(/só acontece enquanto este computador/).first()).toBeVisible()
+  await page.getByLabel(/Fazer backup automático/).check()
+  await page.getByLabel('Frequência').selectOption('daily')
   await page.getByLabel('Horário do backup diário').fill('23:30')
-  await page.getByLabel('Quantos backups manter').fill('9')
+  await page.getByLabel('Dias com cópia guardada').fill('9')
   await page.getByRole('button', { name: 'Salvar configuração' }).click()
   await expect(page.getByText('Configuração de backup salva.')).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('Horário do backup diário')).toHaveValue('23:30')
-  await expect(page.getByLabel('Quantos backups manter')).toHaveValue('9')
-  await expect(page.getByLabel(/Fazer backup automático todos os dias/)).toBeChecked()
+  await expect(page.getByLabel('Dias com cópia guardada')).toHaveValue('9')
+  await expect(page.getByLabel(/Fazer backup automático/)).toBeChecked()
 
   // Backup now: the newest set is the first row.
   await page.getByRole('button', { name: 'Fazer backup agora' }).click()
@@ -43,6 +47,16 @@ test('backups: configure, run now, verify, download and assisted restore', async
   const download = await pending
   expect(download.suggestedFilename()).toBe(name)
   expect(await startsWith(download, 'PK')).toBe(true)
+  await expect(
+    page.getByRole('region', { name: 'Execuções recentes de backup' }).getByText(name),
+  ).toBeVisible()
+
+  // Recovery from another disk: the same set is recognised instead of copied twice.
+  const copy = info.outputPath(name)
+  await download.saveAs(copy)
+  await page.getByLabel('Arquivo do backup (.zip)').setInputFiles(copy)
+  await page.getByRole('button', { name: 'Importar backup' }).click()
+  await expect(page.getByText(/Este backup já está na pasta de backups/)).toBeVisible()
 
   await checkPages(page, info, [['/#/backups', 'Backups', 'backups']])
 
@@ -74,5 +88,5 @@ test('backups: configure, run now, verify, download and assisted restore', async
   await expect(list.getByRole('row').filter({ hasText: '_pre-restore.zip' }).first()).toContainText(
     'Anterior a uma restauração',
   )
-  await expect(page.getByLabel('Quantos backups manter')).toHaveValue('9')
+  await expect(page.getByLabel('Dias com cópia guardada')).toHaveValue('9')
 })

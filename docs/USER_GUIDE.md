@@ -58,6 +58,8 @@ Dois pontos que costumam gerar dúvida:
 - **O estoque não tira de "Locado" o que está com cliente.** Enquanto um equipamento ou uma quantidade está com o cliente por contrato, a tela de Estoque e a situação do equipamento recusam a mudança. O caminho é registrar a devolução no contrato.
 - **Preços, orçamentos e contratos antigos não mudam** quando a tabela de preços é atualizada.
 - **Nada é apagado.** Cadastros são desativados; orçamentos e contratos são cancelados com motivo; o histórico fica.
+- **Rascunho automático dos formulários longos.** Orçamento, contrato direto, retirada, devolução e renovação guardam sozinhos o que você digitou, cerca de um segundo depois de cada alteração; a linha abaixo do aviso mostra "Rascunho salvo automaticamente às …". Esse rascunho **não é um registro**: não reserva nem baixa estoque, não confirma contrato e não gera documento — só o envio do formulário faz isso. Ao reabrir o mesmo formulário (mesmo depois de fechar o navegador ou desligar o computador), aparece "Há um rascunho salvo automaticamente" com **Recuperar rascunho** e **Descartar rascunho**. O rascunho é apagado quando o formulário é enviado com sucesso e expira 7 dias depois da última alteração. Não confunda com o orçamento ou contrato "em rascunho", que já são registros salvos.
+- **A sessão deste computador se renova sozinha.** Se aparecer "A sessão deste computador foi renovada automaticamente. Nada foi gravado: confira os dados e envie novamente.", o formulário continua preenchido: confira e clique de novo no botão de envio.
 
 ## 4. Preparar a operação
 
@@ -277,6 +279,8 @@ O cliente pode pedir a renovação de um contrato pelo portal. O pedido aparece 
 ### Painel inicial (Dashboard)
 
 A tela **Visão geral** mostra indicadores calculados na hora: contratos ativos, aguardando retirada, vencendo em breve, vencidos, itens locados, equipamentos disponíveis, equipamentos em manutenção, orçamentos em aberto e valor contratado. Abaixo ficam **Contratos vencendo e vencidos**, **Movimentações recentes** e o **Acesso rápido**.
+
+Para quem gerencia backups, um aviso no topo da Visão geral indica falha no último backup, backup automático desativado ou cópia antiga demais, com o atalho **Abrir Backups**.
 
 **"Valor contratado" não é valor recebido.** É a soma dos contratos ativos conforme o que foi pactuado. O LocaControl não controla pagamentos.
 

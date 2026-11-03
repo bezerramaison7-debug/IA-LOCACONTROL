@@ -124,7 +124,12 @@ Interface `FiscalProvider` em `backend/app/fiscal/provider.py`; único adapter: 
 
 ## 6F. Relatórios e backup — EXISTENTE (Etapas 8 e 11)
 Relatórios não têm tabelas: `backend/app/reports/service.py` consulta as entidades acima e `export.py` gera Excel/PDF em memória. A migration 0007_reports só cria a permissão `reports.read`.
-Backup não tem tabela própria: configuração em `app_settings` (chave `backup`), conjuntos `.zip` na pasta configurada, lógica em `backend/app/ops/backup.py`. A migration 0010_backups só cria a permissão `backups.manage`.
+Backup não tem tabela própria: configuração em `app_settings` (chave `backup`), conjuntos `.zip` na pasta configurada, lógica em `backend/app/ops/backup.py`. A migration 0010_backups só cria a permissão `backups.manage`. Desde a ADR-024 o histórico de execuções fica em `backup-history.json`, ao lado do banco (fora da base).
+
+## 6G. Rascunhos automáticos — EXISTENTE (P1-C, ADR-024)
+| Model / tabela | Campos | Restrições |
+| --- | --- | --- |
+| FormDraft / form_drafts | id, owner, kind, scope, payload JSON, base_version opcional, created_at, updated_at, expires_at (índice) | único (owner, kind, scope); migration 0011_drafts; sem FK: o conteúdo é opaco e nenhum serviço de domínio o lê |
 
 ## 7. Relacionamentos existentes
 - Customer 1:N Quote; Quote 1:N QuoteItem e QuoteTransition; Quote → Quote de origem por duplicated_from_id; QuoteItem → Product e Price.
@@ -168,7 +173,8 @@ Prefixos: /api para comercial; /api/imports para importação.
 | Portal — lado interno | GET /api/users/{id}/customer; PUT /api/users/{id}/customer; GET /api/renewal-requests; POST /api/renewal-requests/{id}/decide | users.read; users.write; contracts.read; contracts.write, nessa ordem |
 | Fiscal — leitura | GET /api/fiscal/provider; GET /api/fiscal/documents (status, customer_id, contract_id, offset, limit); GET /api/fiscal/documents/{id}; GET /api/fiscal/documents/{id}/pdf e /xml | fiscal.read |
 | Fiscal — escrita | POST /api/fiscal/documents; POST /api/fiscal/documents/{id}/emit, /refresh, /cancel | fiscal.write |
-| Backup | GET /api/backups; PUT /api/backups/config; POST /api/backups; POST /api/backups/{name}/verify; GET /api/backups/{name}/download; POST /api/backups/{name}/restore | backups.manage |
+| Backup | GET /api/backups; GET /api/backups/status; PUT /api/backups/config; POST /api/backups; POST /api/backups/import; POST /api/backups/{name}/verify; GET /api/backups/{name}/download; POST /api/backups/{name}/restore | backups.manage |
+| Rascunhos | GET /api/drafts; GET, PUT e DELETE /api/drafts/{kind}/{scope} | sessão; permissão da operação definitiva (quotes.write, contracts.write ou operations.write) |
 
 Chaves de relatório: active_rentals, due_soon, overdue, rented_products, available_products, equipment_by_customer, equipment_history, renewals, returns, contracted_revenue, top_products, top_customers.
 Retirada, devolução e criação de documento fiscal exigem `request_key` (UUID) para repetição segura. Ações de estado de contrato e fiscal exigem `version`. Restauração exige `confirmation` = `RESTAURAR <nome>` e `password`.
@@ -198,7 +204,7 @@ Para cada novo caso de uso registrar: requisito PRD, entradas/schema, ator/permi
 ## 11. Concorrência e migrations
 Version nas edições; request_key no movimento; source_key na origem; BEGIN IMMEDIATE nas operações SQLite pertinentes.
 Novos números e operações comerciais precisam de constraints + serviço + testes concorrentes.
-Cadeia existente: 0001_foundation → 0002_identity → 0003_masters → 0004_imports → 0005_quotes → 0006_contracts → 0007_reports → 0008_portal → 0009_fiscal → 0010_backups.
+Cadeia existente: 0001_foundation → 0002_identity → 0003_masters → 0004_imports → 0005_quotes → 0006_contracts → 0007_reports → 0008_portal → 0009_fiscal → 0010_backups → 0011_drafts.
 Todas aplicadas ao banco local em 11/10 após cópias prévias; ver DATABASE.
 Numeração de contrato e de renovação, retirada concorrente do mesmo saldo e criação concorrente têm testes em `test_contracts.py` e `test_operations.py`.
 Comandos existentes: scripts/migrate.ps1; -Action current; -Action check. Aplicar migration exige plano/backup.

@@ -45,5 +45,10 @@ export function renderPage(
     </QueryClientProvider>,
   )
 }
+/** Writes to the records; automatic drafts (/drafts, ADR-024) are checked by their own tests. */
 export const writes = (request: ReturnType<typeof mockRequest>) =>
-  request.mock.calls.filter(([, method]) => method && method !== 'GET')
+  request.mock.calls.filter(
+    ([path, method]) => method && method !== 'GET' && !String(path).startsWith('/drafts/'),
+  )
+export const draftCalls = (request: ReturnType<typeof mockRequest>) =>
+  request.mock.calls.filter(([path]) => String(path).startsWith('/drafts/'))

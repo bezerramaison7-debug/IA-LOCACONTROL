@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleCheck, DatabaseBackup, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { CircleCheck, DatabaseBackup, ShieldAlert, TriangleAlert, Upload } from 'lucide-react'
 import { useAuth } from '../auth/context'
 import {
   absolutePath,
   backupKinds,
+  brIso,
+  frequencies,
+  importBackup,
   createBackup,
   downloadBackup,
   fileSize,
@@ -21,7 +24,16 @@ import {
 import { brDateTime, failureMessage } from '../lib/quotes'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
-import { Card, EmptyState, ErrorState, Field, PageHeader, Skeleton, Tag } from '../components/ui'
+import {
+  Card,
+  EmptyState,
+  ErrorState,
+  Field,
+  PageHeader,
+  Select,
+  Skeleton,
+  Tag,
+} from '../components/ui'
 import { useToast } from '../components/toast-context'
 import { Failure, MasterTable } from './masters-shared'
 
@@ -35,9 +47,15 @@ function ConfigForm({
   const { request } = useAuth()
   const [config, setConfig] = useState<BackupConfig>(data.config)
   const [keep, setKeep] = useState(String(data.config.keep))
-  const [errors, setErrors] = useState<{ time?: string; keep?: string; directory?: string }>({})
+  const [errors, setErrors] = useState<{
+    time?: string
+    keep?: string
+    directory?: string
+    mirror?: string
+  }>({})
   const [failure, setFailure] = useState('')
   const [saving, setSaving] = useState(false)
+  const daily = config.frequency === 'daily'
   return (
     <form
       className="form-stack"
@@ -46,25 +64,30 @@ function ConfigForm({
       onSubmit={(event) => {
         event.preventDefault()
         const next = {
-          time: /^([01]\d|2[0-3]):[0-5]\d$/.test(config.time)
-            ? undefined
-            : 'Informe a hora (HH:MM).',
+          time:
+            !daily || /^([01]\d|2[0-3]):[0-5]\d$/.test(config.time)
+              ? undefined
+              : 'Informe a hora (HH:MM).',
           keep:
             /^[1-9]\d{0,2}$/.test(keep.trim()) && Number(keep) <= 365
               ? undefined
-              : 'Informe de 1 a 365 backups.',
+              : 'Informe de 1 a 365 dias.',
           directory: absolutePath(config.directory)
             ? undefined
             : 'Informe o caminho completo da pasta, por exemplo D:\\Backups\\LocaControl.',
+          mirror: absolutePath(config.mirror_directory)
+            ? undefined
+            : 'Informe o caminho completo da pasta, por exemplo E:\\Copia\\LocaControl.',
         }
         setErrors(next)
-        if (next.time || next.keep || next.directory) return
+        if (next.time || next.keep || next.directory || next.mirror) return
         setFailure('')
         setSaving(true)
         void saveBackupConfig(request, {
           ...config,
           keep: Number(keep),
           directory: config.directory.trim(),
+          mirror_directory: config.mirror_directory.trim(),
         })
           .then(onSaved)
           .catch((e) => setFailure(failureMessage(e, 'Não foi possível salvar a configuração.')))
@@ -78,27 +101,40 @@ function ConfigForm({
           onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
         />
         <span>
-          Fazer backup automático todos os dias
-          <small>
-            Roda no horário abaixo enquanto o LocaControl estiver ligado neste computador.
-          </small>
+          Fazer backup automático
+          <small>{data.status.requires_running}</small>
         </span>
       </label>
       <div className="master-form-grid">
+        <Select
+          label="Frequência"
+          value={config.frequency}
+          onChange={(e) =>
+            setConfig({ ...config, frequency: e.target.value as BackupConfig['frequency'] })
+          }
+        >
+          {Object.entries(frequencies).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Select>
+        {daily && (
+          <Field
+            label="Horário do backup diário"
+            type="time"
+            value={config.time}
+            error={errors.time}
+            onChange={(e) => setConfig({ ...config, time: e.target.value })}
+          />
+        )}
         <Field
-          label="Horário do backup diário"
-          type="time"
-          value={config.time}
-          error={errors.time}
-          onChange={(e) => setConfig({ ...config, time: e.target.value })}
-        />
-        <Field
-          label="Quantos backups manter"
+          label="Dias com cópia guardada"
           inputMode="numeric"
           maxLength={3}
           value={keep}
           error={errors.keep}
-          hint="Os mais antigos são apagados automaticamente. Cópias de segurança de restauração são mantidas."
+          hint="Todas as cópias das últimas 24 horas ficam guardadas; dos dias anteriores, a última de cada dia. Cópias anteriores a restaurações e backups importados nunca são apagados."
           onChange={(e) => setKeep(e.target.value)}
         />
       </div>
@@ -111,14 +147,150 @@ function ConfigForm({
         hint={
           'Deixe em branco para usar a pasta padrão. Pasta em uso: ' +
           data.directory +
-          '. Prefira um disco diferente do computador do sistema.'
+          '. Pode ficar em outro disco: a restauração funciona do mesmo jeito.'
         }
         onChange={(e) => setConfig({ ...config, directory: e.target.value })}
+      />
+      <Field
+        label="Segunda cópia (opcional)"
+        maxLength={260}
+        autoComplete="off"
+        value={config.mirror_directory}
+        error={errors.mirror}
+        hint="Cada backup concluído é copiado e conferido também nesta pasta, de preferência em outro disco ou pendrive que fique conectado. Deixe em branco para não fazer."
+        onChange={(e) => setConfig({ ...config, mirror_directory: e.target.value })}
       />
       <Failure message={failure} />
       <div className="row-actions">
         <Button type="submit" disabled={saving}>
           {saving ? 'Salvando…' : 'Salvar configuração'}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+const runKinds: Record<string, string> = {
+  auto: 'Automático',
+  manual: 'Manual',
+  'pre-restore': 'Antes de restauração',
+}
+
+/** Last completed copy, the warning to act on and the record of recent runs. */
+function ProtectionStatus({ data }: { data: BackupsData }) {
+  const { status } = data
+  return (
+    <div className="padded form-stack">
+      {status.alert ? (
+        <div
+          className={
+            'quote-notice' + (status.alert.level === 'danger' ? ' quote-notice-danger' : '')
+          }
+          role="alert"
+        >
+          <strong>{status.alert.message}</strong>
+        </div>
+      ) : (
+        <div className="quote-notice" role="status">
+          <strong>Proteção automática em dia.</strong>
+        </div>
+      )}
+      <p className="draft-status">
+        Última cópia concluída:{' '}
+        <strong>
+          {status.last_success
+            ? brIso(status.last_success.finished_at) + ' (' + status.last_success.name + ')'
+            : 'nenhuma ainda'}
+        </strong>
+        {status.unchanged_at &&
+          ' · Última verificação sem alterações nos dados: ' + brIso(status.unchanged_at)}
+        {' · Espaço ocupado pelos backups: ' + fileSize(data.total_size)}
+      </p>
+      <p className="draft-status">
+        <TriangleAlert size={14} aria-hidden="true" /> {status.requires_running}
+      </p>
+      {status.runs.length > 0 && (
+        <MasterTable
+          label="Execuções recentes de backup"
+          headers={['Quando', 'Tipo', 'Resultado', 'Detalhe']}
+        >
+          {status.runs.slice(0, 10).map((run) => (
+            <tr key={run.started_at + run.kind + run.status}>
+              <td className="date-cell">{brIso(run.finished_at)}</td>
+              <td>{runKinds[run.kind] || run.kind}</td>
+              <td>
+                {run.status === 'ok' ? (
+                  <Tag tone="success" icon={CircleCheck}>
+                    Concluído
+                  </Tag>
+                ) : (
+                  <Tag tone="danger" icon={ShieldAlert}>
+                    Falhou
+                  </Tag>
+                )}
+              </td>
+              <td>
+                {run.status === 'ok'
+                  ? run.name +
+                    (run.mirror?.status === 'ok'
+                      ? ' · segunda cópia conferida'
+                      : run.mirror?.status === 'failed'
+                        ? ' · segunda cópia falhou: ' + (run.mirror.error || '')
+                        : '')
+                  : run.error}
+              </td>
+            </tr>
+          ))}
+        </MasterTable>
+      )}
+    </div>
+  )
+}
+
+/** A set kept on another disk or a USB drive comes into the backup folder, verified first. */
+function ImportForm({ onImported }: { onImported: (name: string) => void }) {
+  const { request } = useAuth()
+  const [file, setFile] = useState<File | null>(null)
+  const [failure, setFailure] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <form
+      className="form-stack"
+      noValidate
+      aria-label="Importar backup"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!file) {
+          setFailure('Escolha o arquivo .zip do backup.')
+          return
+        }
+        setFailure('')
+        setBusy(true)
+        void importBackup(request, file)
+          .then((result) => onImported(result.name))
+          .catch((e) => setFailure(failureMessage(e, 'Não foi possível importar o backup.')))
+          .finally(() => setBusy(false))
+      }}
+    >
+      <div className="field">
+        <label htmlFor="backup-import-file">Arquivo do backup (.zip)</label>
+        <input
+          id="backup-import-file"
+          type="file"
+          accept=".zip,application/zip"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+        />
+        <small>
+          Use para recuperar um backup guardado em outro disco, pendrive ou outro computador. O
+          arquivo é conferido antes de ser aceito e nada nos dados atuais muda: depois, restaure-o
+          pela lista abaixo.
+        </small>
+      </div>
+      <Failure message={failure} />
+      <div className="row-actions">
+        <Button type="submit" variant="secondary" disabled={busy}>
+          <Upload size={16} aria-hidden="true" />
+          {busy ? 'Importando e conferindo…' : 'Importar backup'}
         </Button>
       </div>
     </form>
@@ -315,8 +487,14 @@ export function Backups() {
       ) : (
         <>
           <Card
+            title="Proteção automática"
+            description="Última cópia concluída, avisos e as execuções mais recentes."
+          >
+            <ProtectionStatus data={query.data} />
+          </Card>
+          <Card
             title="Backup automático"
-            description="Horário, retenção e pasta de destino. A alteração é auditada."
+            description="Frequência, retenção, pasta de destino e segunda cópia. A alteração é auditada."
           >
             <div className="padded">
               <ConfigForm
@@ -325,6 +503,19 @@ export function Backups() {
                 onSaved={(next) => {
                   cache.setQueryData(['backups', 'overview'], next)
                   toast('Configuração de backup salva.')
+                }}
+              />
+            </div>
+          </Card>
+          <Card
+            title="Recuperar backup de outro disco"
+            description="Traz para a pasta de backups um conjunto guardado fora dela."
+          >
+            <div className="padded">
+              <ImportForm
+                onImported={(name) => {
+                  toast('Backup conferido e importado: ' + name + '. Ele já aparece na lista.')
+                  void cache.invalidateQueries({ queryKey: ['backups', 'overview'] })
                 }}
               />
             </div>
@@ -354,6 +545,10 @@ export function Backups() {
                       {item.kind === 'backup' ? (
                         <Tag tone="info" icon={CircleCheck}>
                           {backupKinds.backup}
+                        </Tag>
+                      ) : item.kind === 'imported' ? (
+                        <Tag tone="info" icon={Upload}>
+                          {backupKinds.imported}
                         </Tag>
                       ) : (
                         <Tag tone="warning" icon={ShieldAlert}>
@@ -409,7 +604,7 @@ export function Backups() {
               <EmptyState
                 initial
                 title="Nenhum backup ainda"
-                description="Use “Fazer backup agora” ou ative o backup automático diário."
+                description="Use “Fazer backup agora” ou ative o backup automático."
               />
             )}
           </Card>

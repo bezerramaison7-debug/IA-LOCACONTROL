@@ -10,6 +10,7 @@ import sys
 import threading
 import zipfile
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from alembic import command
@@ -350,9 +351,9 @@ def test_failure_after_database_overwrite_is_undone(client, admin, base, monkeyp
     assert client.get("/api/customers").json() == customers_before
     assert tree(Path(settings.document_directory)) == files_before
     assert not Path(settings.import_directory).exists()
-    directory = Path(settings.backup_directory)
-    assert not list(directory.glob("replaced_*")) and not list(directory.glob(".restore_*"))
-    assert len(list(directory.glob("*_pre-restore.zip"))) == 1
+    data = Path(settings.document_directory).parent
+    assert not list(data.glob("replaced_*")) and not list(data.glob(".restore_*"))
+    assert len(list(Path(settings.backup_directory).glob("*_pre-restore.zip"))) == 1
     assert client.get("/health").json()["status"] == "ok"
 
 
@@ -488,26 +489,57 @@ def test_failure_in_migration_after_restore_is_undone(client, admin, base, monke
     connection.close()
     assert client.get("/api/customers").json() == customers_before
     assert tree(Path(settings.document_directory)) == files_before
-    directory = Path(settings.backup_directory)
-    assert not list(directory.glob("replaced_*")) and not list(directory.glob(".restore_*"))
+    data = Path(settings.document_directory).parent
+    assert not list(data.glob("replaced_*")) and not list(data.glob(".restore_*"))
     assert client.get("/health").json()["status"] == "ok"
 
 
-def test_restore_refuses_backup_folder_on_another_disk_before_any_change(
-    client, admin, base, monkeypatch
-):
-    created = backup(client, admin)
-    customer(client, admin, "11144477735")
-    before = client.get("/api/customers").json()
-    backups = Path(client.app.state.settings.backup_directory)
-    monkeypatch.setattr(
-        backup_module, "volume", lambda path: "D:" if Path(path) == backups else "C:"
-    )
-    switch(client, admin)
-    response = restore(client, admin[1], created["name"])
-    monkeypatch.undo()
-    assert response.status_code == 409
-    assert "outro disco" in response.json()["detail"]
-    assert "Nada foi alterado" in response.json()["detail"]
-    assert not list(backups.glob("*_pre-restore.zip"))
-    assert client.get("/api/customers").json() == before
+OTHER_DISK = Path("/dev/shm")
+
+
+@pytest.mark.skipif(
+    not OTHER_DISK.is_dir() or OTHER_DISK.stat().st_dev == PROJECT_ROOT.stat().st_dev,
+    reason="sem um segundo sistema de arquivos para simular outro disco",
+)
+def test_restore_from_a_backup_folder_on_another_disk(client, admin, base):
+    """A pasta de backups em outro disco (aqui um tmpfs) restaura sem mover nada entre discos:
+    a preparação e as pastas substituídas ficam ao lado dos dados."""
+    person, item = base
+    document(client, admin, person, item)
+    settings = client.app.state.settings
+    other = OTHER_DISK / f"locacontrol-teste-{uuid4().hex}"
+    try:
+        configured = client.put(
+            "/api/backups/config",
+            json={
+                "enabled": False,
+                "frequency": "20min",
+                "time": "22:00",
+                "keep": 14,
+                "directory": str(other),
+            },
+            headers=admin[1],
+        )
+        assert configured.status_code == 200, configured.text
+        created = backup(client, admin)
+        assert (other / created["name"]).is_file()
+        assert (other / created["name"]).stat().st_dev != Path(
+            settings.document_directory
+        ).stat().st_dev
+        files_at_backup = tree(Path(settings.document_directory))
+        later = customer(client, admin, "11144477735")
+        document(client, admin, later, item)
+        switch(client, admin)
+        response = restore(client, admin[1], created["name"])
+        assert response.status_code == 200, response.text
+        result = response.json()
+        relogin(client)
+        assert client.get("/api/customers").json()["total"] == 1
+        assert tree(Path(settings.document_directory)) == files_at_backup
+        aside = Path(result["replaced_files"])
+        assert aside.parent == Path(settings.document_directory).parent
+        assert len(list((aside / "documents").glob("*.pdf"))) == 2
+        assert not list(other.glob("replaced_*")) and not list(other.glob(".restore_*"))
+        assert (other / result["safety_backup"]).is_file()
+    finally:
+        shutil.rmtree(other, ignore_errors=True)

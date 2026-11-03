@@ -46,7 +46,12 @@ def current_user(request: Request, db: DB) -> User:
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         trusted_request(request)
         if not secrets.compare_digest(request.headers.get("x-csrf-token", ""), csrf_token(token)):
-            raise HTTPException(403, "Solicitação inválida. Atualize a página e tente novamente.")
+            # The header lets the interface fetch the current token without losing the form.
+            raise HTTPException(
+                403,
+                "Solicitação inválida. Atualize a página e tente novamente.",
+                headers={"X-LocaControl-Retry": "csrf"},
+            )
     return user
 
 
