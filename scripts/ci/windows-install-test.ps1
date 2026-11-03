@@ -35,12 +35,23 @@ function Wait-Health([int]$Port = 8000) {
     }
     return $false
 }
+# Toda espera tem limite: um passo travado falha com o nome do passo, em vez de travar a CI.
+function Wait-Process-Exit($Process, [int]$Seconds, [string]$What) {
+    if (-not $Process.WaitForExit($Seconds * 1000)) {
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        throw "FALHOU: $What não terminou em $Seconds s"
+    }
+    $Process.WaitForExit()
+    return $Process.ExitCode
+}
 function Install([string]$File, [string[]]$Extra, [string]$Log) {
+    Write-Host "... $(Get-Date -Format HH:mm:ss) instalador $([IO.Path]::GetFileName($File)) $($Extra -join ' ')"
     $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$(Join-Path $Logs $Log)") + $Extra
-    return (Start-Process $File -ArgumentList $arguments -Wait -PassThru).ExitCode
+    return Wait-Process-Exit (Start-Process $File -ArgumentList $arguments -PassThru) 900 "instalador ($Log)"
 }
 function Run-Exe([string[]]$Arguments) {
-    return (Start-Process $Exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden).ExitCode
+    Write-Host "... $(Get-Date -Format HH:mm:ss) LocaControl.exe $($Arguments -join ' ')"
+    return Wait-Process-Exit (Start-Process $Exe -ArgumentList $Arguments -PassThru -WindowStyle Hidden) 300 "LocaControl.exe $($Arguments[0])"
 }
 function Session([int]$Port = 8000) {
     $web = New-Object Microsoft.PowerShell.Commands.WebRequestSession
@@ -83,8 +94,13 @@ function Invoke-AsProbeUser([string]$Label, [string]$Body) {
     $pwsh = (Get-Command pwsh).Source
     $arguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $script)
     $credential = [pscredential]::new(".\$ProbeUser", (ConvertTo-SecureString $ProbePassword -AsPlainText -Force))
+    Write-Host "... $(Get-Date -Format HH:mm:ss) como conta comum: $Label"
     try {
-        Start-Process $pwsh -Credential $credential -ArgumentList $arguments -WorkingDirectory $ProbeDir -WindowStyle Hidden -LoadUserProfile -Wait | Out-Null
+        $process = Start-Process $pwsh -Credential $credential -ArgumentList $arguments -WorkingDirectory $ProbeDir -WindowStyle Hidden -LoadUserProfile -PassThru
+        if (-not $process.WaitForExit(180000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Write-Host "Conta comum: '$Label' não terminou em 180 s."
+        }
     } catch { Write-Host "Start-Process com outra conta falhou ($($_.Exception.Message)); usando tarefa agendada." }
     if (-not (Test-Path $done)) {
         $quoted = ($arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
@@ -273,7 +289,7 @@ try {
     Assert ((Invoke-RestMethod 'http://127.0.0.1:8000/api/customers' -WebSession $s.Web).total -eq $stored.Count) 'clientes preservados na reinstalação'
 
     # 7. Desinstalação silenciosa: serviço, programa e firewall removidos; dados preservados.
-    Assert ((Start-Process (Join-Path $App 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru).ExitCode -eq 0) 'desinstalador terminou com código 0'
+    Assert ((Wait-Process-Exit (Start-Process (Join-Path $App 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru) 600 'desinstalador') -eq 0) 'desinstalador terminou com código 0'
     for ($i = 0; $i -lt 60 -and (Test-Path $Exe); $i++) { Start-Sleep -Seconds 1 }
     Assert (-not (Test-Path $Exe)) 'programa removido'
     Assert (-not (Get-Service $Service -ErrorAction SilentlyContinue)) 'serviço removido'
@@ -313,7 +329,7 @@ try {
     $openExit = Join-Path $ProbeDir 'abrir-estacao.exit'
     Invoke-AsProbeUser 'abrir-estacao' "`$p = Start-Process -FilePath '$Exe' -ArgumentList 'abrir', '--sem-navegador' -Wait -PassThru -WindowStyle Hidden; Set-Content -Path '$openExit' -Value `$p.ExitCode"
     Assert ((Get-Content $openExit) -eq '0') 'conta comum abre o endereço da loja na estação'
-    Assert ((Start-Process (Join-Path $App 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru).ExitCode -eq 0) 'desinstalação da estação terminou com código 0'
+    Assert ((Wait-Process-Exit (Start-Process (Join-Path $App 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru) 600 'desinstalador da estação') -eq 0) 'desinstalação da estação terminou com código 0'
     for ($i = 0; $i -lt 60 -and (Test-Path $Exe); $i++) { Start-Sleep -Seconds 1 }
     Assert (-not (Test-Path "Cert:\LocalMachine\Root\$thumb")) 'desinstalação da estação removeu a CA'
     Write-Host 'PASS: instalação, serviço isolado, conta comum, estação, atualização sob carga, reinstalação e desinstalação no Windows da CI.'
