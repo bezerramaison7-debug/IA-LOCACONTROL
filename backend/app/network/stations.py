@@ -34,7 +34,7 @@ STATION_COOKIE = "locacontrol_station"
 # Browsers keep a cookie for at most about 400 days; it is renewed at every new session.
 STATION_COOKIE_DAYS = 400
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I: read aloud without doubt
-CODE_LENGTH = 8
+CODE_LENGTH = 26  # 130 bits; configurable down to 13 (65 bits) by pairing_code_length
 CODE_MINUTES = 10
 CODE_ATTEMPTS = 5
 # Wrong codes from one address: after this many in the window, that address waits.
@@ -125,10 +125,21 @@ def station_request(request: Request) -> bool:
     origin = request.headers.get("origin")
     return (
         from_store_network(request)
+        and secure_request(request)
         and store_host(request)
         and request.headers.get("x-locacontrol-request") == "1"
         and (origin is None or same_origin(request))
     )
+
+
+def group(code: str) -> str:
+    """ABCD-EFGH-… for reading aloud and typing."""
+    return "-".join(code[i : i + 4] for i in range(0, len(code), 4))
+
+
+def secure_request(request: Request) -> bool:
+    """Stations only talk HTTPS (P1-E): no credential crosses the store network in plain HTTP."""
+    return request.url.scheme == "https"
 
 
 def principal_only(request: Request):
@@ -303,14 +314,18 @@ class StationRegistry:
 
     # ---- pairing -------------------------------------------------------------------
 
-    def start_pairing(self) -> dict:
-        """A new code replaces any previous one; only its hash is kept."""
+    def start_pairing(self, ca_der: bytes | None = None, length: int = CODE_LENGTH) -> dict:
+        """A new code replaces any previous one. Kept: the code's hash and the proof of the CA
+        (HMAC keyed with the code), which a station checks before trusting the CA (P1-E)."""
+        from app.network.tls import ca_proof
+
         with self.lock:
             data = self._load()
-            code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+            code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(length))
             now = int(self.clock())
             data["pairing"] = {
                 "code_hash": digest(code),
+                "ca_proof": ca_proof(code, ca_der) if ca_der else None,
                 "created_at": now,
                 "expires_at": now + CODE_MINUTES * 60,
                 "attempts": 0,
@@ -318,10 +333,19 @@ class StationRegistry:
             self._event(data, "pairing.started")
             self._save(data)
             return {
-                "code": code[:4] + "-" + code[4:],
+                "code": group(code),
                 "expires_at": now + CODE_MINUTES * 60,
                 "attempts_left": CODE_ATTEMPTS,
+                "bits": length * 5,
             }
+
+    def ca_proof(self) -> str | None:
+        """Proof of the CA for the code in force, or None (no code, or it expired)."""
+        with self.lock:
+            current = self._load()["pairing"]
+            if not current or current["expires_at"] <= self.clock():
+                return None
+            return current.get("ca_proof")
 
     def cancel_pairing(self):
         with self.lock:

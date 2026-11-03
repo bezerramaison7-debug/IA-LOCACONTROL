@@ -21,12 +21,17 @@ from app.auth.service import IdentityService
 from app.masters.schemas import Input
 from app.network.stations import (
     NOT_PAIRED,
+    PRIVATE_NETWORKS,
     RESET_PHRASE,
+    from_store_network,
     peer_address,
     principal_only,
+    secure_request,
     station_label,
+    station_networks,
     station_request,
 )
+from app.network.tls import TlsUnavailable, local_names, private_addresses
 
 router = APIRouter(prefix="/api/stations", tags=["Rede local e estações"])
 
@@ -71,7 +76,7 @@ Principal = Annotated[None, Depends(principal_only)]
 
 
 class PairInput(Input):
-    code: str = Field(min_length=4, max_length=20)
+    code: str = Field(min_length=4, max_length=60)
     # Letters, digits, spaces and - _ . only (M4): no parentheses imitating another station's
     # code in the audit, no control characters. 40 keeps the audit label within 100 characters.
     name: str = Field(min_length=1, max_length=40, pattern=r"^[\w .\-]+$")
@@ -95,8 +100,69 @@ def pair(payload: PairInput, request: Request, response: Response, db: DB):
             station_id=station["id"],
         )
     )
-    set_station_cookie(response, request.app.state.settings, token)
+    set_station_cookie(response, request.app.state.settings, token, request)
     return {"station": station}
+
+
+def extra_networks(settings) -> list:
+    return [n for n in station_networks(settings) if n not in PRIVATE_NETWORKS]
+
+
+def tls_state(request: Request) -> dict:
+    """Creates the local CA on first use and renews the server certificate when due (P1-E)."""
+    settings = request.app.state.settings
+    try:
+        state = request.app.state.tls.ensure(
+            local_names(settings.station_hosts),
+            private_addresses(extra_networks(settings)),
+            label=f"({installation_label(request)})",
+            networks=extra_networks(settings),
+        )
+    except (TlsUnavailable, OSError) as error:
+        return {"available": False, "error": str(error)}
+    return {"available": True, **state}
+
+
+def installation_label(request: Request) -> str:
+    server = request.app.state.stations.server() or {}
+    return server.get("id", "")[:8]
+
+
+def authority_der(request: Request) -> bytes:
+    """The CA a new pairing code will vouch for; without usable HTTPS there is no pairing."""
+    state = tls_state(request)
+    if not state["available"]:
+        raise HTTPException(
+            503,
+            "O HTTPS da rede da loja está indisponível neste computador: "
+            + state["error"]
+            + " Sem ele não há pareamento de estações.",
+        )
+    return request.app.state.tls.ca_der()
+
+
+@router.get("/ca", dependencies=[Depends(local_only), Depends(network_on)])
+def certificate_authority(request: Request):
+    """Public: the CA certificate (public data) and, while a pairing code is in force, the proof
+    `HMAC(code, CA)` a station checks with the code before trusting it (P1-E). Over HTTPS only
+    from the store network (the station has no trust yet: it must not rely on this channel)."""
+    if not (secure_request(request) and from_store_network(request)) and not is_loopback(request):
+        raise HTTPException(403, NOT_PAIRED)
+    state = tls_state(request)
+    if not state["available"]:
+        raise HTTPException(503, "HTTPS indisponível no computador principal.")
+    registry = request.app.state.stations
+    return {
+        "ca_pem": request.app.state.tls.ca_pem().decode(),
+        "fingerprint": state["ca_fingerprint"],
+        "proof": registry.ca_proof(),
+        "code_length": request.app.state.settings.pairing_code_length,
+    }
+
+
+def is_loopback(request: Request) -> bool:
+    peer = peer_address(request)
+    return bool(peer and peer.is_loopback)
 
 
 @router.get("", dependencies=[Depends(local_only)])
@@ -109,6 +175,7 @@ def overview(request: Request, db: DB, user: CurrentUser, _: Principal):
         "server": registry.server(),
         "network": request.app.state.settings.network_mode,
         "registry": state,
+        "tls": tls_state(request) if request.app.state.settings.network_mode else None,
         "pairing": None,
         "stations": [],
         "events": [],
@@ -145,7 +212,10 @@ def reset_registry(payload: ResetInput, request: Request, db: DB, user: CurrentU
 
 @router.post("/pairing", status_code=201, dependencies=[Depends(local_only), Depends(network_on)])
 def start_pairing(request: Request, db: DB, user: CurrentUser, _: Principal):
-    code = request.app.state.stations.start_pairing()
+    settings = request.app.state.settings
+    code = request.app.state.stations.start_pairing(
+        authority_der(request), settings.pairing_code_length
+    )
     IdentityService(db, user).audit("station.pairing_started", "stations", None, {})
     return code
 

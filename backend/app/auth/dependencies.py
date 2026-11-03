@@ -65,7 +65,12 @@ def bound_station(request: Request, session: AuthSession) -> dict | None:
         request.state.station_rotate = check.rotate
         request.state.station_reuse = check.reuse
         station = check.station
-        if not station or station["id"] != session.station_id or not from_store_network(request):
+        if (
+            not station
+            or station["id"] != session.station_id
+            or not from_store_network(request)
+            or request.url.scheme != "https"  # never over plain HTTP (P1-E)
+        ):
             raise HTTPException(401, NOT_PAIRED)
         return station
     if settings.network_mode:

@@ -39,7 +39,11 @@ function CodePanel({ code, onCancel }: { code: PairingCode; onCancel: () => void
     <div className="quote-notice" role="status" aria-label="Código de pareamento">
       {left > 0 ? (
         <>
-          <span>Digite este código na estação, em “Conectar este computador à loja”:</span>
+          <span>
+            Na estação, rode o instalador do LocaControl, escolha <strong>Conectar à loja</strong> e
+            informe o endereço deste computador e este código. Ele também comprova à estação que o
+            certificado de segurança é deste computador.
+          </span>
           <strong className="pairing-code">{code.code}</strong>
           <span>
             Vale por mais {Math.floor(left / 60)} min {String(left % 60).padStart(2, '0')} s, para
@@ -214,6 +218,47 @@ export function Stations() {
               </span>
             </div>
           ))}
+          {query.data.network && query.data.tls && (
+            <Card
+              title="Conexão segura (HTTPS)"
+              description="As estações só falam com este computador por HTTPS, com o certificado da autoridade local desta loja."
+            >
+              {query.data.tls.available ? (
+                <dl className="padded definition-list">
+                  <dt>Autoridade local (impressão digital)</dt>
+                  <dd className="code-cell">{query.data.tls.ca_fingerprint}</dd>
+                  <dt>Certificado deste computador vale até</dt>
+                  <dd>{new Date(query.data.tls.server_expires).toLocaleDateString('pt-BR')}</dd>
+                  <dt>Nomes e endereços</dt>
+                  <dd>
+                    {[...query.data.tls.server_names, ...query.data.tls.server_addresses].join(
+                      ', ',
+                    )}
+                  </dd>
+                  <dt>Proteção das chaves</dt>
+                  <dd>{query.data.tls.protection}</dd>
+                </dl>
+              ) : (
+                <div className="padded">
+                  <div className="quote-notice quote-notice-danger" role="alert">
+                    <strong>HTTPS indisponível: a rede da loja está fechada.</strong>
+                    <span>{query.data.tls.error}</span>
+                  </div>
+                </div>
+              )}
+              {query.data.tls.available && query.data.tls.renamed_outside_ca.length > 0 && (
+                <div className="padded">
+                  <div className="quote-notice" role="status">
+                    <strong>
+                      O nome atual deste computador ({query.data.tls.renamed_outside_ca.join(', ')})
+                      não está no certificado da loja.
+                    </strong>
+                    <span>As estações devem usar o endereço IP, ou conectar-se de novo.</span>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
           {!query.data.network && (
             <div className="quote-notice" role="note">
               <strong>A rede da loja está desativada neste computador.</strong>

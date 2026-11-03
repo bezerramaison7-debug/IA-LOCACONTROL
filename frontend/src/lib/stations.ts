@@ -29,12 +29,30 @@ export const stationsSchema = z.object({
   network: z.boolean(),
   /** A2: the station list could not be read (stations blocked) or was recovered from its copy. */
   registry: z.object({ unavailable: z.boolean(), recovered_from_backup: z.boolean() }),
+  /** P1-E: HTTPS of the store network (local CA and server certificate). */
+  tls: z
+    .union([
+      z.object({
+        available: z.literal(true),
+        ca_fingerprint: z.string(),
+        ca_expires: z.string(),
+        server_expires: z.string(),
+        server_names: z.array(z.string()),
+        server_addresses: z.array(z.string()),
+        renamed_outside_ca: z.array(z.string()),
+        protection: z.string(),
+      }),
+      z.object({ available: z.literal(false), error: z.string() }),
+    ])
+    .nullable()
+    .optional(),
   pairing: z.object({ expires_at: z.number(), attempts_left: z.number() }).nullable(),
   stations: z.array(stationSchema),
   events: z.array(eventSchema),
 })
 export const pairingCodeSchema = z.object({
   code: z.string(),
+  bits: z.number().optional(),
   expires_at: z.number(),
   attempts_left: z.number(),
 })
@@ -79,6 +97,22 @@ export async function revokeStation(request: Request, id: string) {
   return request('/stations/' + encodeURIComponent(id) + '/revoke', 'POST')
 }
 /** Called by a computer without a session: it exchanges the code for its own credential. */
+/** The pairing code the "Conectar à loja" installer put in the address (#/parear?codigo=…).
+ * It never reaches the server or its logs; it is erased from the address bar once read. */
+export function codeFromAddress(): string {
+  const hash = window.location.hash
+  const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : ''
+  const code = new URLSearchParams(query).get('codigo') || ''
+  if (code) {
+    try {
+      window.history.replaceState(null, '', window.location.pathname + '#/')
+    } catch {
+      /* the code stays only in this tab */
+    }
+  }
+  return code.toUpperCase()
+}
+export const codeLength = (code: string) => code.replace(/[^A-Za-z0-9]/g, '').length
 export async function pairThisComputer(code: string, name: string) {
   return send('/stations/pair', '', 'POST', { code, name })
 }

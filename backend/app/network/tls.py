@@ -251,7 +251,9 @@ class LocalAuthority:
     def ca_pem(self) -> bytes:
         return self.ca_cert_path.read_bytes()
 
-    def _create_ca(self, names: list[str], label: str, password: bytes, now: dt.datetime):
+    def _create_ca(
+        self, names: list[str], label: str, password: bytes, now: dt.datetime, networks=()
+    ):
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -266,7 +268,7 @@ class LocalAuthority:
         )
         constraints = x509.NameConstraints(
             permitted_subtrees=[x509.DNSName(n) for n in names]
-            + [x509.IPAddress(network) for network in PERMITTED_NETWORKS],
+            + [x509.IPAddress(network) for network in [*PERMITTED_NETWORKS, *networks]],
             excluded_subtrees=None,
         )
         certificate = (
@@ -344,6 +346,7 @@ class LocalAuthority:
         addresses: list | None = None,
         label: str = "",
         now: dt.datetime | None = None,
+        networks: list | None = None,
     ) -> dict:
         """Creates what is missing and renews the server certificate when due. Fails closed."""
         from cryptography import x509
@@ -357,7 +360,8 @@ class LocalAuthority:
             raise TlsUnavailable("Arquivos TLS incompletos: falta o certificado da autoridade.")
         password = self._password(create=creating)
         if creating:
-            self._create_ca(names, label, password, now)
+            # Extra store networks declared in the settings are vouched for too (ADR-026).
+            self._create_ca(names, label, password, now, networks or [])
         ca = self.ca_certificate()
         permitted = {
             n.value

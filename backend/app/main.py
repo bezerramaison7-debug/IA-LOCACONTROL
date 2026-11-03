@@ -26,6 +26,7 @@ from app.masters.routes import router as masters_router
 from app.network.routes import record_reuse
 from app.network.routes import router as stations_router
 from app.network.stations import registry_for
+from app.network.tls import TLS_FOLDER, LocalAuthority
 from app.ops.backup import BackupManager, BackupScheduler
 from app.ops.maintenance import MaintenanceGate, MaintenanceMiddleware
 from app.ops.routes import router as backups_router
@@ -88,6 +89,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.gate = MaintenanceGate()
     # Paired stations of the store network (ADR-025); outside the database on purpose.
     app.state.stations = registry_for(settings)
+    # Local certificate authority for HTTPS (P1-E), beside the station list, outside backups.
+    app.state.tls = LocalAuthority(app.state.stations.path.parent / TLS_FOLDER)
     app.add_middleware(MaintenanceMiddleware, gate=app.state.gate)
     app.add_middleware(
         CORSMiddleware,
@@ -104,7 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Station token rotation and reuse (A1), after the request's transaction has ended.
         rotate = getattr(request.state, "station_rotate", None)
         if rotate:
-            set_station_cookie(response, settings, rotate)
+            set_station_cookie(response, settings, rotate, request)
         reuse = getattr(request.state, "station_reuse", None)
         if reuse:
             await run_in_threadpool(record_reuse, app.state.engine, reuse)

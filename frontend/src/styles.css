@@ -2126,8 +2126,9 @@ dd {
   color: var(--danger);
 }
 .pairing-code {
-  font-size: 1.75rem;
-  letter-spacing: 0.2em;
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .definition-list {

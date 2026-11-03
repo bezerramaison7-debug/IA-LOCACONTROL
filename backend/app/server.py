@@ -210,18 +210,96 @@ def prepare(settings: Settings) -> bool:
     return created
 
 
-def listen_address(settings: Settings) -> str:
-    """The store network only when the network mode was chosen (local edition, ADR-025)."""
-    if settings.local_mode and settings.network_mode:
-        return "0.0.0.0"
-    if settings.network_mode:
-        print("LOCACONTROL_NETWORK_MODE exige LOCACONTROL_LOCAL_MODE; ignorado.", flush=True)
-    return "127.0.0.1"
+PID_FILE = "locacontrol.pid"
+
+
+def listeners(settings: Settings, port: int, https_port: int, tls_files=None) -> list[dict]:
+    """Where the server listens (P1-E): plain HTTP only on 127.0.0.1 (this computer); the store
+    network only over HTTPS, only in the network mode and only with usable certificates."""
+    http = {"host": "127.0.0.1", "port": port}
+    if not (settings.local_mode and settings.network_mode):
+        if settings.network_mode:
+            print("LOCACONTROL_NETWORK_MODE exige LOCACONTROL_LOCAL_MODE; ignorado.", flush=True)
+        return [http]
+    if not tls_files:
+        return [http]  # fail closed: no certificate, no store network
+    certfile, keyfile, password = tls_files
+    return [
+        http,
+        {
+            "host": "0.0.0.0",
+            "port": https_port,
+            "ssl_certfile": certfile,
+            "ssl_keyfile": keyfile,
+            "ssl_keyfile_password": password,
+        },
+    ]
+
+
+def prepare_tls(settings: Settings):
+    """Creates the local CA on the first start of the network mode and renews the server
+    certificate; any problem keeps the store network closed (the main computer still works)."""
+    if not (settings.local_mode and settings.network_mode):
+        return None
+    from app.network.stations import PRIVATE_NETWORKS, registry_for, station_networks
+    from app.network.tls import TLS_FOLDER, LocalAuthority, local_names, private_addresses
+
+    registry = registry_for(settings)
+    extra = [n for n in station_networks(settings) if n not in PRIVATE_NETWORKS]
+    authority = LocalAuthority(registry.path.parent / TLS_FOLDER)
+    try:
+        server_id = (registry.server() or {}).get("id", "")[:8]
+        state = authority.ensure(
+            local_names(settings.station_hosts),
+            private_addresses(extra),
+            label=f"({server_id})",
+            networks=extra,
+        )
+        print(
+            f"HTTPS da rede: autoridade {state['ca_fingerprint'][:23]}…, certificado até "
+            f"{state['server_expires'][:10]} ({state['protection']}).",
+            flush=True,
+        )
+        return authority.server_files()
+    except Exception as error:  # noqa: BLE001 — any failure keeps the network closed
+        print(
+            f"HTTPS indisponível ({error}). A rede da loja fica fechada; este computador continua "
+            "funcionando em http://127.0.0.1.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
+
+
+def serve(app, endpoints: list[dict]):
+    """One process, one application, one or two listeners. The first runs the application's
+    lifespan; the second starts after it and the two stop together."""
+    import asyncio
+
+    import uvicorn
+
+    servers = [
+        uvicorn.Server(uvicorn.Config(app, lifespan="on" if index == 0 else "off", **endpoint))
+        for index, endpoint in enumerate(endpoints)
+    ]
+
+    async def run():
+        first = asyncio.create_task(servers[0].serve())
+        while not servers[0].started and not first.done():
+            await asyncio.sleep(0.05)
+        tasks = [first] + [asyncio.create_task(server.serve()) for server in servers[1:]]
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for server in servers:
+            server.should_exit = True
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(run())
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Servidor do LocaControl")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--https-port", type=int, default=None)
     parser.add_argument(
         "--prepare", action="store_true", help="só prepara o banco e encerra, sem servir"
     )
@@ -253,17 +331,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         own = [f"http://127.0.0.1:{args.port}", f"http://localhost:{args.port}"]
         settings.allowed_origins += [o for o in own if o not in settings.allowed_origins]
-        host = listen_address(settings)
-        if host != "127.0.0.1":
-            print(
-                f"Modo rede: estações pareadas acessam este computador na porta {args.port}.",
-                flush=True,
-            )
-        import uvicorn
-
+        https_port = args.https_port or settings.https_port
+        endpoints = listeners(settings, args.port, https_port, prepare_tls(settings))
+        if len(endpoints) > 1:
+            print(f"Rede da loja: estações em https://<este computador>:{https_port}/", flush=True)
         from app.main import create_app
 
-        uvicorn.run(create_app(settings), host=host, port=args.port)
+        (root / PID_FILE).write_text(str(os.getpid()), encoding="ascii")
+        try:
+            serve(create_app(settings), endpoints)
+        finally:
+            (root / PID_FILE).unlink(missing_ok=True)
         return 0
     finally:
         lock.close()
