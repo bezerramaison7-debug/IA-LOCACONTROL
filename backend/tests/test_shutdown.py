@@ -150,7 +150,7 @@ def prepare(data_dir: Path, code: str | None = None) -> subprocess.CompletedProc
         cwd=PROJECT_ROOT,
         env=env(data_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",  # o processo filho escreve em UTF-8 (PYTHONUTF8=1), também no Windows
         timeout=120,
     )
 
