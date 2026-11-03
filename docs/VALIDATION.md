@@ -92,7 +92,7 @@ Cabeça da branch `p1/d-rede` (PR #7), que incorpora o P1-C validado em `9156985
 | E2E (`scripts/e2e-auth.py`) | 36 + 4 + 1 (rede) |
 | Smoke | aprovado |
 
-Correção de registro: a validação de `a01dce3` (acima, 208 passaram) dependia do horário — `test_two_stations_withdraw_the_same_unit_at_once` só passava entre 21h e 24h de Brasília (achado M5). Desde `e7a552d` o servidor do teste roda com a data comercial fixada; a suíte passou nesta máquina às 09h e às 11h (UTC−3) de 2026-11-03. Durante o desenvolvimento, o commit `39c8e02` (A1) foi feito com quatro testes de atualização de bases antigas falhando, corrigidos em `0e52a49`.
+Correção de registro: a validação de `a01dce3` (acima, 208 passaram) dependia do horário — `test_two_stations_withdraw_the_same_unit_at_once` só passava entre 21h e 24h de Brasília (achado M5). Desde `e7a552d` o servidor do teste roda com a data comercial fixada; a suíte passou nesta máquina em duas execuções completas na manhã de 2026-11-03 (UTC−3), fora da janela de 21h–24h em que o teste antigo passava, e o teste novo `test_the_server_uses_the_controlled_business_date` prova o controle (2 diárias → VENCENDO, 10 → ATIVO). Durante o desenvolvimento, o commit `39c8e02` (A1) foi feito com quatro testes de atualização de bases antigas falhando, corrigidos em `0e52a49`.
 
 Pendente no Windows: duas estações reais, rotação por horas sem revogação indevida, cópia de cookies entre PCs, `fsync` do `stations.json` no NTFS, firewall, acesso pelo nome do computador. Não declarar homologado.
 
