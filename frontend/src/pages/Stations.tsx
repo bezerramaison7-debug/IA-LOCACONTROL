@@ -6,6 +6,9 @@ import {
   cancelPairing,
   eventLabels,
   getStations,
+  recentReuse,
+  resetRegistry,
+  RESET_PHRASE,
   revokeStation,
   startPairing,
   type PairingCode,
@@ -14,7 +17,7 @@ import {
 import { brDateTime, failureMessage } from '../lib/quotes'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
-import { Card, EmptyState, ErrorState, PageHeader, Skeleton, Tag } from '../components/ui'
+import { Card, EmptyState, ErrorState, Field, PageHeader, Skeleton, Tag } from '../components/ui'
 import { useToast } from '../components/toast-context'
 import { Failure, MasterTable } from './masters-shared'
 
@@ -99,6 +102,46 @@ function RevokeDialog({
   )
 }
 
+/** A2: the station list is unreadable; the main computer works, stations are blocked. */
+function RegistryRepair({ onDone }: { onDone: () => void }) {
+  const { request } = useAuth()
+  const [phrase, setPhrase] = useState('')
+  const [failure, setFailure] = useState('')
+  return (
+    <div className="quote-notice quote-notice-danger" role="alert">
+      <strong>A lista de estações está ilegível: todas as estações estão bloqueadas.</strong>
+      <span>
+        Este computador e os dados da loja não foram afetados. Se houver uma cópia da pasta de
+        dados, recoloque o arquivo stations.json e reinicie o LocaControl. Sem cópia, recomece a
+        lista: os arquivos atuais ficam guardados e todas as estações precisam ser pareadas de novo.
+      </span>
+      <form
+        className="form-stack"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault()
+          setFailure('')
+          void resetRegistry(request, phrase)
+            .then(onDone)
+            .catch((e) => setFailure(failureMessage(e, 'Não foi possível recomeçar a lista.')))
+        }}
+      >
+        <Field
+          label={'Digite exatamente: ' + RESET_PHRASE}
+          autoComplete="off"
+          spellCheck={false}
+          value={phrase}
+          onChange={(e) => setPhrase(e.target.value)}
+        />
+        <Failure message={failure} />
+        <Button type="submit" variant="danger" disabled={phrase !== RESET_PHRASE}>
+          Recomeçar a lista de estações
+        </Button>
+      </form>
+    </div>
+  )
+}
+
 export function Stations() {
   const { request } = useAuth()
   const cache = useQueryClient()
@@ -143,6 +186,34 @@ export function Stations() {
         <ErrorState message={query.error.message} onRetry={() => void query.refetch()} />
       ) : (
         <>
+          {query.data.registry.unavailable && <RegistryRepair onDone={reload} />}
+          {query.data.registry.recovered_from_backup && (
+            <div className="quote-notice" role="status">
+              <strong>A lista de estações foi recuperada da cópia de segurança.</strong>
+              <span>
+                O arquivo principal estava ilegível e foi guardado para análise. Confira se as
+                revogações recentes continuam valendo.
+              </span>
+            </div>
+          )}
+          {recentReuse(query.data).map((event) => (
+            <div
+              className="quote-notice quote-notice-danger"
+              role="alert"
+              key={'reuse' + event.at + event.station_id}
+            >
+              <strong>
+                Credencial da estação {event.station_name} usada por mais de um computador em{' '}
+                {brDateTime(event.at)}: a estação foi revogada.
+              </strong>
+              <span>
+                Indícios: endereço {event.peer || '—'} (o último conhecido era{' '}
+                {event.last_address || '—'}). Verifique os computadores da loja e pareie de novo a
+                estação legítima. A credencial foi copiada de algum modo: o navegador da estação, um
+                programa nela ou a rede.
+              </span>
+            </div>
+          ))}
           {!query.data.network && (
             <div className="quote-notice" role="note">
               <strong>A rede da loja está desativada neste computador.</strong>
@@ -187,6 +258,7 @@ export function Stations() {
                       {station.revoked_at ? (
                         <Tag tone="danger" icon={ShieldOff}>
                           Revogada em {brDateTime(station.revoked_at)}
+                          {station.revoked_reason ? ' · ' + station.revoked_reason : ''}
                         </Tag>
                       ) : (
                         <Tag tone="success" icon={CircleCheck}>
@@ -224,7 +296,9 @@ export function Stations() {
               <dt>Base de dados da loja</dt>
               <dd className="code-cell">{query.data.installation_id}</dd>
               <dt>Este servidor (computador principal)</dt>
-              <dd className="code-cell">{query.data.server.id}</dd>
+              <dd className="code-cell">
+                {query.data.server?.id || '— (lista de estações ilegível)'}
+              </dd>
               <dt>Estações</dt>
               <dd>Cada uma tem o seu código, mostrado na lista acima.</dd>
             </dl>

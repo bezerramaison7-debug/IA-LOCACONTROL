@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { canOpen, useAuth } from '../auth/context'
 import { getBackupStatus } from '../lib/backups'
+import { getStations, recentReuse } from '../lib/stations'
 import { eventKinds } from '../lib/contracts'
 import { getDashboard, type Dashboard as DashboardData } from '../lib/reports'
 import { brDateTime, brMoney, brQuantity } from '../lib/quotes'
@@ -265,8 +266,40 @@ function BackupAlert() {
   )
 }
 
+/** Main computer of the network edition: a copied station credential or an unreadable station
+ * list needs attention (A1, A2). */
+function StationsAlert() {
+  const { request } = useAuth()
+  const query = useQuery({
+    queryKey: ['stations', 'alert'],
+    queryFn: () => getStations(request),
+    retry: false,
+    refetchInterval: 5 * 60_000,
+  })
+  if (!query.data) return null
+  const reuse = recentReuse(query.data)
+  const message = query.data.registry.unavailable
+    ? 'A lista de estações está ilegível: as estações estão bloqueadas até o reparo.'
+    : reuse.length
+      ? 'Credencial de estação usada por mais de um computador: ' +
+        reuse.map((event) => event.station_name).join(', ') +
+        ' revogada(s).'
+      : query.data.registry.recovered_from_backup
+        ? 'A lista de estações foi recuperada da cópia de segurança; confira as revogações.'
+        : ''
+  if (!message) return null
+  return (
+    <div className="quote-notice quote-notice-danger" role="alert" aria-label="Aviso da rede">
+      <strong>
+        <TriangleAlert size={16} aria-hidden="true" /> {message}
+      </strong>
+      <Link to="/estacoes">Abrir Estações da rede</Link>
+    </div>
+  )
+}
+
 export function Dashboard() {
-  const { user, request } = useAuth()
+  const { user, request, local, station, network } = useAuth()
   const has = (code: string) => !!user?.permissions.includes(code)
   const canRead = has('contracts.read')
   const query = useQuery({
@@ -297,6 +330,7 @@ export function Dashboard() {
         }
       />
       {has('backups.manage') && <BackupAlert />}
+      {local && network && !station && <StationsAlert />}
       {has('imports.write') && (
         <Card title="Comece pelo seu Excel">
           <div className="import-body">

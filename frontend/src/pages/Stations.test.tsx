@@ -4,12 +4,15 @@ import { expect, it } from 'vitest'
 import { mockRequest, renderPage, writes } from '../test/render'
 import { Stations } from './Stations'
 import { Backups } from './Backups'
+import { Dashboard } from './Dashboard'
+import { dashboard } from '../test/auth-fixture'
 
 const now = Math.floor(Date.now() / 1000)
 const overview = {
   installation_id: 'base-1111',
   server: { id: 'servidor-2222', created_at: now - 1000 },
   network: true,
+  registry: { unavailable: false, recovered_from_backup: false },
   pairing: null,
   stations: [
     {
@@ -81,6 +84,9 @@ it('a station sees backups but cannot configure, download, import or restore', a
       keep: 14,
       directory: '',
       mirror_directory: '',
+      max_total_gb: 10,
+      min_free_gb: 10,
+      min_free_percent: 15,
     },
     directory: 'C:\\dados\\backups',
     items: [{ name, size: 10, created_at: now, kind: 'backup' }],
@@ -106,4 +112,74 @@ it('a station sees backups but cannot configure, download, import or restore', a
   ])
     expect(screen.queryByRole('button', { name: label })).toBeNull()
   expect(screen.getByRole('button', { name: 'Fazer backup agora' })).toBeInTheDocument()
+})
+
+it('warns about a detected credential reuse and shows why the station was revoked', async () => {
+  const reused = {
+    ...overview,
+    stations: [
+      {
+        ...overview.stations[0],
+        revoked_at: now - 60,
+        revoked_reason: 'reuso de credencial detectado',
+      },
+    ],
+    events: [
+      {
+        at: now - 60,
+        action: 'station.reuse_detected',
+        station_id: overview.stations[0].id,
+        station_name: 'Balcão 1',
+        peer: '192.168.0.99',
+        last_address: '192.168.0.21',
+      },
+    ],
+  }
+  renderPage(
+    <Stations />,
+    mockRequest(() => reused),
+    { local: true },
+  )
+  const alert = await screen.findByRole('alert')
+  expect(alert).toHaveTextContent('usada por mais de um computador')
+  expect(alert).toHaveTextContent('192.168.0.99')
+  expect(screen.getByText(/reuso de credencial detectado/)).toBeInTheDocument()
+  // No principal, a Visão geral também avisa.
+  renderPage(
+    <Dashboard />,
+    mockRequest((path) => (path === '/stations' ? reused : dashboard)),
+    {
+      local: true,
+      network: true,
+      permissions: ['contracts.read'],
+    },
+  )
+  const banner = await screen.findByRole('alert', { name: 'Aviso da rede' })
+  expect(banner).toHaveTextContent('Balcão 1')
+})
+
+it('an unreadable station list blocks stations and is reset only with the exact phrase', async () => {
+  const user = userEvent.setup()
+  const request = mockRequest((path) =>
+    path === '/stations/registry/reset'
+      ? { server: { id: 'novo' }, registry: { unavailable: false, recovered_from_backup: false } }
+      : {
+          ...overview,
+          server: null,
+          registry: { unavailable: true, recovered_from_backup: false },
+          stations: [],
+          events: [],
+        },
+  )
+  renderPage(<Stations />, request, { local: true })
+  expect(await screen.findByText(/todas as estações estão bloqueadas/)).toBeInTheDocument()
+  const button = screen.getByRole('button', { name: 'Recomeçar a lista de estações' })
+  expect(button).toBeDisabled()
+  await user.type(screen.getByLabelText(/Digite exatamente/), 'RECOMEÇAR ESTAÇÕES')
+  await user.click(button)
+  await waitFor(() =>
+    expect(writes(request)).toEqual([
+      ['/stations/registry/reset', 'POST', { confirmation: 'RECOMEÇAR ESTAÇÕES' }],
+    ]),
+  )
 })

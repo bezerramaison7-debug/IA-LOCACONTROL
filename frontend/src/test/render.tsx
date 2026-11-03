@@ -21,6 +21,7 @@ export function renderPage(
     clear?: () => void
     local?: boolean
     station?: { id: string; name: string } | null
+    network?: boolean
   } = {},
 ) {
   const user = {
@@ -36,6 +37,7 @@ export function renderPage(
           user,
           local: options.local,
           station: options.station ?? null,
+          network: options.network,
           loading: false,
           error: '',
           refresh: async () => {},
