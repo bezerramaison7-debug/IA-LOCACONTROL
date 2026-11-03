@@ -97,3 +97,5 @@ try {
 } finally {
     Copy-Item (Join-Path $Data 'logs\*') $Logs -ErrorAction SilentlyContinue
 }
+# Chegou aqui = todas as conferências passaram; o último netsh (regra já removida) devolve 1.
+exit 0
