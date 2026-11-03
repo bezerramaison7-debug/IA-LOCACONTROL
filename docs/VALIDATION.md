@@ -48,3 +48,19 @@ Cabeça da branch `p1/c-protecao` (PR sobre `p1/b-instalacao`). Executado no **L
 Não coberto: Windows (instalador, pendrive/HD externo como pasta de backups ou segunda cópia, `msvcrt`/ACL), backup automático real de 20 minutos durante horas, leitores de tela.
 
 Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
+
+## 2026-11-03 — SHA `a01dce3` (P1-D, rede local e pareamento)
+
+Cabeça da branch `p1/d-rede` (PR sobre `p1/c-protecao`). Executado no **Linux da nuvem**, não no Windows; bancos, pastas e servidores temporários. As "estações" são clientes que chegam ao servidor pelo endereço de rede do contêiner (não loopback), com cookies próprios.
+
+| Verificação | Resultado |
+| --- | --- |
+| `ruff check backend scripts/smoke.py scripts/e2e-auth.py` / `ruff format --check backend` | aprovado; 110 arquivos formatados |
+| `pytest backend/tests` | 208 passaram, 1 pulado (ACL do Windows), 1 aviso de depreciação. Novos: 11 em `test_stations.py` e 5 em `test_network_server.py` (servidor real `python -m app.server` em modo rede: edição concorrente, retirada concorrente da mesma unidade, confirmação concorrente, backup durante escritas de duas estações, queda e retorno do principal) |
+| Frontend: `lint`, `format:check`, Vitest, `build` | sem erros; 82 testes em 18 arquivos; build concluído (aviso conhecido de chunk acima de 500 kB) |
+| E2E (`scripts/e2e-auth.py`) | 36 (edição com login) + 4 (edição local) + 1 (rede: principal em 127.0.0.1 e estação pelo endereço de rede — pareamento, limites da estação, revogação) |
+| Smoke (`scripts/smoke.py`) | aprovado |
+
+Não coberto: estações Windows reais, firewall do Windows, acesso por nome do computador, IPv6, desempenho com muitas estações.
+
+Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
