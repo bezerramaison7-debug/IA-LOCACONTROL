@@ -97,3 +97,30 @@ Correção de registro: a validação de `a01dce3` (acima, 208 passaram) dependi
 Pendente no Windows: duas estações reais, rotação por horas sem revogação indevida, cópia de cookies entre PCs, `fsync` do `stations.json` no NTFS, firewall, acesso pelo nome do computador. Não declarar homologado.
 
 Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
+
+## 2026-11-03 — SHA `cf6de29643214586a46fd785f7122c428417f738` (P1-E: instalador do Windows, HTTPS local, reserva de espaço)
+
+Cabeça da branch `p1/e-instalador` (PR sobre `p1/d-rede`). Duas execuções independentes no **mesmo SHA**: (1) checkout limpo e destacado no **Linux da nuvem** (Python 3.13, Node 22, Chromium 1243); (2) **CI do GitHub**, execução [41653655941](https://github.com/bezerramaison7-debug/LocaControl/actions/runs/41653655941), com um job Linux (`ubuntu-24.04`) e dois jobs Windows (`windows-2022`, Windows Server 2022 descartável, Python 3.13.17). Sem dados comerciais reais; bancos, pastas e servidores temporários.
+
+| Verificação | Linux (nuvem) | CI Linux | CI Windows |
+| --- | --- | --- | --- |
+| `ruff check` / `ruff format --check` | aprovado | aprovado | — |
+| `pytest backend/tests` | 256 passaram, 2 pulados (ACL e DPAPI, só Windows) | aprovado | **257 passaram, 1 pulado** (caminhos POSIX); DPAPI, ACL e restauração da pasta de backups em outra unidade (C: × D:) executados |
+| Frontend: `npm ci`, lint, `format:check`, Vitest, `build` | 86 testes em 18 arquivos | aprovado | `build` |
+| E2E (`scripts/e2e-auth.py`; rede pelo servidor real em **HTTPS**, Chromium confiando só na chave do certificado do servidor) | 36 + 4 + 1 | aprovado | — |
+| Smoke | aprovado | aprovado | — |
+| Name Constraints no verificador do Windows (`X509Chain`/CryptoAPI, CA na Raiz da máquina) | — | — | certificado permitido aceito; nome/IP públicos recusados com status de Name Constraint |
+| Instalador (PyInstaller 6.22.3 + Inno Setup 6) e teste silencioso `scripts/ci/windows-install-test.ps1` | — | — | **27 conferências aprovadas** (abaixo) |
+
+Conferências do teste de instalação no Windows da CI: instalador com código 0; programa em Arquivos de Programas; `.env` com edição local e modo rede; regra de firewall limitada à sub-rede local; servidor responde em `http://127.0.0.1:8000`; CA local criada; cliente gravado; HTTPS da loja disponível; IP privado no certificado do servidor (10.1.0.x); **HTTPS recusado pelo Windows antes de confiar na CA**; HTTP não escuta na rede; `conectar` com código errado sai com 2 e não grava nada; com o código certo instala a CA em `Cert:\LocalMachine\Root`; **HTTPS validado pelo Windows depois de confiar**; `desconectar` remove a CA; atualização com o servidor em execução (código 0), linha própria do `.env` preservada, escolha anterior reaproveitada, servidor de volta, cliente preservado; desinstalação silenciosa (código 0), programa removido, **banco preservado**, regra de firewall removida.
+
+Correções feitas durante esta validação (todas em commits próprios antes deste SHA):
+- a primeira execução da CI (`6abce79`, [41651611002](https://github.com/bezerramaison7-debug/LocaControl/actions/runs/41651611002)) falhou em dois testes no Linux: o runner tinha **12,7 GB livres**, abaixo da reserva padrão (≈ 13,6 GB), e o produto recusou corretamente. Os testes dependiam do disco real sem querer (`monkeypatch.undo()` desfazia o disco simulado; um teste de processos à parte não tinha reserva própria) — corrigido em `4f7bff3`, sem mudar a regra do produto;
+- o teste de instalação passou em todas as conferências mas o passo saía com 1 por causa do `$LASTEXITCODE` do último `netsh` (regra já removida) — corrigido em `fa8cece`;
+- o teste de restauração de outro disco era pulado no Windows — passou a usar outra unidade em `cf6de29`.
+
+Observação de desempenho (não é falha): no Windows da CI, dois testes de `test_storage.py` que criam dezenas de backups levam ~110 s cada (segundos no Linux), provavelmente pelo `fsync` de cada arquivo no NTFS. Medir em computador físico com a frequência real de 20 minutos.
+
+**O que esta validação NÃO comprova**: Windows 10/11 de usuário (UAC, SmartScreen com instalador sem assinatura, antivírus); o assistente gráfico (a CI só usa o modo silencioso); uma estação em **outro** computador (na CI, a mesma máquina faz os dois papéis); Edge, Chrome e Firefox reais diante da CA; nome do computador e `.local`; DHCP; DPAPI após reinício e migração; atalho de inicialização; pendrive/HD externo; disco pequeno real. Lista completa em `docs/P1_BRIEFING.md` ("P1-E — o que falta validar em computador físico"). **Não declarar homologado.**
+
+Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
