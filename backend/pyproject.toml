@@ -19,6 +19,8 @@ dependencies = [
   "defusedxml>=0.7.1,<1",
   "python-multipart>=0.0.20,<1",
   "reportlab>=4.2,<5",
+  # Local certificate authority and HTTPS for the store network (P1-E).
+  "cryptography>=46,<51",
 ]
 
 [project.optional-dependencies]
