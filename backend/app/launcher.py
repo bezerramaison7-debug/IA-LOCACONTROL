@@ -72,12 +72,12 @@ def spawn(command: list[str]):
 
 
 def open_app(port: int, browser: bool = True, wait: float = 90) -> int:
-    from app.network.connect import read_station
+    from app.network.connect import station_url
 
-    station = read_station()
-    if station.get("url"):
+    url = station_url()
+    if url:
         if browser:
-            webbrowser.open(station["url"])
+            webbrowser.open(url)
         return 0
     if not health(port):
         from app import winservice
@@ -224,17 +224,29 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--servidor", required=True)
         parser.add_argument("--codigo", required=True)
         parser.add_argument("--sem-navegador", action="store_true")
+        parser.add_argument("--resultado", type=Path, help="arquivo lido pelo instalador")
         args = parser.parse_args(argv)
         from app.network.connect import DEFAULT_PORT as HTTPS_PORT
-        from app.network.connect import ConnectError, connect
+        from app.network.connect import ConnectError, connect, write_result
 
         port = args.porta if args.porta != DEFAULT_PORT else HTTPS_PORT
         try:
             record = connect(args.servidor, args.codigo, port, open_browser=not args.sem_navegador)
-        except ConnectError as error:
-            print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} conectar: {error}", file=sys.stderr)
+        except Exception as error:  # noqa: BLE001 — every failure must reach the installer
+            message = str(error) if isinstance(error, ConnectError) else f"Erro inesperado: {error}"
+            print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} conectar: {message}", file=sys.stderr)
+            if args.resultado:
+                write_result(args.resultado, False, message)
             return EXIT_CONNECT_FAILED
-        print(f"Conectado à loja {record['url']} (autoridade {record['ca_fingerprint'][:23]}…).")
+        # Only the certificate is settled here; the station is paired in the browser (UX-P1E-03).
+        message = (
+            f"Certificado da loja {record['url']} conferido pelo código e instalado "
+            f"(autoridade {record['ca_fingerprint'][:23]}…). Falta concluir o pareamento no "
+            "navegador."
+        )
+        print(message)
+        if args.resultado:
+            write_result(args.resultado, True, message, record["pairing_url"])
         return 0
     if verb == "desconectar":
         from app.network.connect import disconnect

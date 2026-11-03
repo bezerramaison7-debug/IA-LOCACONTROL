@@ -72,6 +72,59 @@ def test_windowed_server_writes_its_messages_to_the_log(data_dir):
     assert "Aplicando atualizações do banco" in log
 
 
+def test_connect_tells_the_installer_exactly_what_happened(data_dir, monkeypatch, tmp_path):
+    """UX-P1E-03: o instalador mostra a mensagem e o código de saída do conectar; sucesso é só
+    "certificado conferido e instalado" — o pareamento ainda falta (no navegador)."""
+    from app.network import connect
+
+    result = tmp_path / "resultado.txt"
+
+    def refuse(*_args, **_kwargs):
+        raise connect.ConnectError("A identidade do computador principal NÃO confere com o código")
+
+    monkeypatch.setattr(connect, "connect", refuse)
+    arguments = ["conectar", "--servidor", "192.168.0.10", "--codigo", "X", "--resultado"]
+    assert launcher.main([*arguments, str(result)]) == launcher.EXIT_CONNECT_FAILED
+    lines = result.read_text(encoding="utf-8-sig").splitlines()
+    assert lines[0] == "ERRO" and "NÃO confere" in lines[1] and lines[2] == ""
+
+    def crash(*_args, **_kwargs):
+        raise PermissionError("acesso negado")
+
+    monkeypatch.setattr(connect, "connect", crash)  # falha inesperada também chega ao instalador
+    assert launcher.main([*arguments, str(result)]) == launcher.EXIT_CONNECT_FAILED
+    assert result.read_text(encoding="utf-8-sig").splitlines()[0] == "ERRO"
+
+    def accept(server, code, port, open_browser):
+        assert not open_browser and port == 8443
+        return {
+            "url": "https://192.168.0.10:8443/",
+            "ca_fingerprint": "AB:" * 31 + "CD",
+            "pairing_url": "https://192.168.0.10:8443/#/parear?codigo=ABCD",
+        }
+
+    monkeypatch.setattr(connect, "connect", accept)
+    assert launcher.main([*arguments, str(result), "--sem-navegador"]) == 0
+    status, message, url = result.read_text(encoding="utf-8-sig").splitlines()
+    assert status == "OK" and "conferido pelo código e instalado" in message
+    assert "Falta concluir o pareamento" in message
+    assert url == "https://192.168.0.10:8443/#/parear?codigo=ABCD"
+
+
+def test_the_pairing_code_is_never_written_to_the_station_record(tmp_path, monkeypatch):
+    from app.network import connect
+
+    monkeypatch.setattr(
+        connect, "authenticate", lambda *_a: {"der": b"ca", "pem": "", "fingerprint": "AA"}
+    )
+    record = connect.connect(
+        "192.168.0.10", "ABCD-EFGH", root=tmp_path, trust=lambda *_a: None, open_browser=False
+    )
+    assert "ABCD" in record["pairing_url"]
+    saved = (tmp_path / connect.STATION_FILE).read_text(encoding="utf-8")
+    assert "ABCD" not in saved and "pairing_url" not in saved
+
+
 def test_windowed_connect_failure_is_kept_in_the_commands_log(data_dir, monkeypatch):
     """Sem console, o erro do "Conectar à loja" vai para logs/comandos.log (o instalador aponta)."""
     from app.network import connect

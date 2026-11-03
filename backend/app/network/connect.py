@@ -134,6 +134,39 @@ def read_station(root: Path | None = None) -> dict:
         return {}
 
 
+# The data folder is closed to Windows users without administrator rights (SEC-P1E-01); the
+# store's address, which is not a secret, is also kept where every user can read it.
+REGISTRY_KEY = r"Software\LocaControl"
+REGISTRY_URL = "UrlDaLoja"
+
+
+def registry_url(value: str | None = None, remove: bool = False) -> str | None:
+    """Reads (or, as administrator, writes/removes) the store address in HKLM."""
+    if os.name != "nt":
+        return None
+    import winreg
+
+    try:
+        if value is None and not remove:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, REGISTRY_KEY) as key:
+                return winreg.QueryValueEx(key, REGISTRY_URL)[0]
+        with winreg.CreateKeyEx(
+            winreg.HKEY_LOCAL_MACHINE, REGISTRY_KEY, 0, winreg.KEY_SET_VALUE
+        ) as key:
+            if remove:
+                winreg.DeleteValue(key, REGISTRY_URL)
+            else:
+                winreg.SetValueEx(key, REGISTRY_URL, 0, winreg.REG_SZ, value)
+    except OSError:
+        return None
+    return value
+
+
+def station_url(root: Path | None = None) -> str | None:
+    """Where this station opens the store; None on the main computer."""
+    return read_station(root).get("url") or registry_url()
+
+
 def pairing_url(server: str, port: int, code: str) -> str:
     grouped = "-".join(normalise(code)[i : i + 4] for i in range(0, len(normalise(code)), 4))
     return f"https://{host(server)}:{port}/#/parear?codigo={grouped}"
@@ -165,9 +198,20 @@ def connect(
     path = station_file(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     write_durably(path, json.dumps(record, ensure_ascii=False, indent=1).encode("utf-8"))
+    if root is None:
+        registry_url(record["url"])
+    record["pairing_url"] = pairing_url(server, port, code)
     if open_browser:
-        webbrowser.open(pairing_url(server, port, code))
+        webbrowser.open(record["pairing_url"])
     return record
+
+
+def write_result(path: Path, ok: bool, message: str, url: str = ""):
+    """What the installer shows (UX-P1E-03): first line OK/ERRO, then the message, then the
+    pairing address. UTF-8 with BOM, which Inno Setup reads as UTF-8."""
+    text = "\r\n".join(["OK" if ok else "ERRO", " ".join(message.split()), url]) + "\r\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8-sig")
 
 
 def disconnect(root: Path | None = None, untrust=None) -> bool:
@@ -177,4 +221,6 @@ def disconnect(root: Path | None = None, untrust=None) -> bool:
         return False
     (untrust or (windows_untrust if os.name == "nt" else (lambda _p: None)))(previous)
     station_file(root).unlink(missing_ok=True)
+    if root is None:
+        registry_url(remove=True)
     return True
