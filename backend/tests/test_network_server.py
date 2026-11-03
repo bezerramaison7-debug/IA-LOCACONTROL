@@ -41,7 +41,17 @@ def own_address() -> str | None:
 
 ADDRESS = own_address()
 pytestmark = pytest.mark.skipif(ADDRESS is None, reason="sem endereço de rede não loopback")
-TODAY = date.today().isoformat()
+# Controlled time (M5): the server runs with this business date, whatever the machine's clock or
+# time zone, so derived states ("vencendo", "vencido") never depend on when the suite runs.
+FROZEN = date(2026, 11, 3)
+TODAY = FROZEN.isoformat()
+BOOT = (
+    "import datetime, runpy, sys\n"
+    "import app.core.clock as clock\n"
+    f"clock.business_today = lambda: datetime.date({FROZEN.year}, {FROZEN.month}, {FROZEN.day})\n"
+    "sys.argv = ['app.server', *sys.argv[1:]]\n"
+    "runpy.run_module('app.server', run_name='__main__', alter_sys=True)\n"
+)
 
 
 def free_port() -> int:
@@ -112,7 +122,7 @@ class Server:
     def start(self):
         log = (self.data.parent / "server.log").open("a", encoding="utf-8")
         self.process = subprocess.Popen(
-            [sys.executable, "-m", "app.server", "--port", str(self.port)],
+            [sys.executable, "-c", BOOT, "--port", str(self.port)],
             cwd=PROJECT_ROOT,
             env=self.env,
             stdout=log,
@@ -144,6 +154,23 @@ def store():
     server.start()
     principal = Browser(f"http://127.0.0.1:{server.port}")
     principal.enter()
+    # Temporary data only: this machine's disk may not keep the default reserve (A3).
+    status, body = principal.call(
+        "PUT",
+        "/api/backups/config",
+        {
+            "enabled": False,
+            "frequency": "20min",
+            "time": "22:00",
+            "keep": 14,
+            "directory": "",
+            "mirror_directory": "",
+            "max_total_gb": 10,
+            "min_free_gb": 1,
+            "min_free_percent": 0,
+        },
+    )
+    assert status == 200, body
     stations = []
     for name in ("Balcão", "Depósito"):
         status, code = principal.call("POST", "/api/stations/pairing")
@@ -220,7 +247,7 @@ def customer(browser, seed):
     )
 
 
-def contract(browser, person, item_id, quantity="1.000"):
+def contract(browser, person, item_id, quantity="1.000", days=10):
     draft = made(
         browser,
         "/api/contracts",
@@ -232,7 +259,7 @@ def contract(browser, person, item_id, quantity="1.000"):
                     "product_id": item_id,
                     "quantity": quantity,
                     "period": "DIARIA",
-                    "period_count": 3,
+                    "period_count": days,
                     "unit_price": None,
                 }
             ],
@@ -385,3 +412,44 @@ def test_main_computer_goes_down_and_comes_back(store):
     assert second.call("GET", "/api/customers")[0] == 200
     assert second.enter()["station"]["name"] == "Depósito"
     customer(second, 100000005)
+
+
+def test_the_server_uses_the_controlled_business_date(store):
+    """Regression for M5: a contract due within the warning window is "vencendo" and one due
+    later is "ativo", decided by the frozen date, not by the machine's clock."""
+    _, principal, _ = store
+    item = product(principal, "REL-REDE")
+    made(
+        principal,
+        "/api/stock/movements",
+        {
+            "product_id": item["id"],
+            "quantity": "2.000",
+            "from_status": None,
+            "to_status": "DISPONIVEL",
+            "reason": "Entrada",
+            "request_key": str(uuid4()),
+        },
+    )
+    person = customer(principal, 100000006)
+    states = {}
+    for days in (2, 10):
+        draft = contract(principal, person, item["id"], days=days)
+        confirmed = made(
+            principal,
+            f"/api/contracts/{draft['id']}/confirm",
+            {"version": draft["version"], "reason": ""},
+            expected=200,
+        )
+        status, body = principal.call(
+            "POST",
+            f"/api/contracts/{confirmed['id']}/withdrawals",
+            {
+                "occurred_on": TODAY,
+                "request_key": str(uuid4()),
+                "items": [{"contract_item_id": confirmed["items"][0]["id"], "quantity": "1.000"}],
+            },
+        )
+        assert status == 201, body
+        states[days] = principal.call("GET", f"/api/contracts/{confirmed['id']}")[1]["status"]
+    assert states == {2: "VENCENDO", 10: "ATIVO"}
