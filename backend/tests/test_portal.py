@@ -1,6 +1,7 @@
 # ruff: noqa: F811 — pytest fixtures imported from other test modules are test parameters.
 import pytest
 from alembic import command
+from legacy import legacy_account
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 from test_contracts import act, confirmed, contract_body
@@ -19,7 +20,6 @@ from test_quotes import (  # noqa: F401
 )
 
 from app.auth.models import User
-from app.auth.service import IdentityService
 from app.contracts.models import Contract
 from app.persistence.database import build_engine
 from app.portal.models import RenewalRequest
@@ -243,12 +243,8 @@ def test_upgrade_0007_to_head_grants_portal_only_to_clients(migration_config):
     command.upgrade(migration_config, "0007_reports")
     engine = build_engine(migration_config.attributes["database_url"])
     try:
-        with Session(engine) as db:
-            user = IdentityService(db, local=True).create_user(
-                "existing", "Existing", PASSWORD, ["ADMINISTRADOR"], must_change=False
-            )
-            original_hash, user_id = user.password_hash, user.id
-            db.commit()
+        # Written with that revision's columns, as an old installation had it.
+        user_id, original_hash = legacy_account(engine, "existing", "Existing", PASSWORD)
         command.upgrade(migration_config, "head")
         command.check(migration_config)
         with Session(engine) as db:

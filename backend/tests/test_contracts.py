@@ -6,6 +6,7 @@ from threading import Barrier
 
 import pytest
 from alembic import command
+from legacy import legacy_account
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 from test_quotes import (  # noqa: F401 — admin/base are fixtures reused here
@@ -25,7 +26,6 @@ from test_quotes import (  # noqa: F401 — admin/base are fixtures reused here
 )
 
 from app.auth.models import AuditLog, User
-from app.auth.service import IdentityService
 from app.contracts.models import Contract, ContractDocument, ContractTemplate
 from app.contracts.schemas import ContractInput
 from app.contracts.service import ContractService
@@ -277,12 +277,8 @@ def test_upgrade_0005_to_head_preserves_account_and_seeds_template(migration_con
     command.upgrade(migration_config, "0005_quotes")
     engine = build_engine(migration_config.attributes["database_url"])
     try:
-        with Session(engine) as db:
-            user = IdentityService(db, local=True).create_user(
-                "existing", "Existing", PASSWORD, ["ADMINISTRADOR"], must_change=False
-            )
-            original_hash, user_id = user.password_hash, user.id
-            db.commit()
+        # Written with that revision's columns, as an old installation had it.
+        user_id, original_hash = legacy_account(engine, "existing", "Existing", PASSWORD)
         command.upgrade(migration_config, "head")
         command.check(migration_config)
         with Session(engine) as db:
