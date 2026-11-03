@@ -33,6 +33,7 @@ from app import __version__
 from app.contracts.models import AppSetting
 from app.core.clock import BUSINESS_TZ
 from app.core.config import resource
+from app.core.durable import replace_durably, write_durably
 from app.ops.storage import LIMIT_DEFAULTS, cap_bytes, plan, removal_order, reserve_bytes
 from app.persistence.database import resolve_database_url
 
@@ -206,10 +207,9 @@ class BackupManager:
             return {}
 
     def _save_history(self, data: dict):
-        path = self.history_path()
-        part = path.with_name(f".{path.name}.part")
-        part.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        part.replace(path)
+        write_durably(
+            self.history_path(), json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8")
+        )
 
     def record(self, run: dict, **extra):
         """Appends one run; never lets a bookkeeping error hide the backup's own result."""
@@ -460,7 +460,11 @@ class BackupManager:
         )
         if not decision.fits:
             raise HTTPException(SPACE_STATUS, decision.reason)
-        removed = self.make_room(directory, decision)
+        # Before writing, only what the free-space reserve demands is removed; the cap and the
+        # retention wait until the new set has been written and verified (M2).
+        removed = self.make_room(
+            directory, self.storage_plan(config, directory, estimate, peak, bounded=False)
+        )
         copy_path, part = directory / f".{name}.db", directory / f".{name}.part"
         try:
             source = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
@@ -495,12 +499,15 @@ class BackupManager:
                     "files": hashes,
                 }
                 archive.writestr(MANIFEST, json.dumps(manifest, ensure_ascii=False, indent=1))
-            part.replace(target)
+            replace_durably(part, target)
         finally:
             copy_path.unlink(missing_ok=True)
             part.unlink(missing_ok=True)
+        # The set is read back from the disk and checked before it counts as a backup (M2).
+        self.check_written(target)
         logger.info("Backup criado: %s (%s arquivos)", name, len(hashes))
         if kind != "pre-restore":
+            removed += self.enforce_cap(config, directory)
             self.prune(config)
         return {
             "name": name,
@@ -509,6 +516,26 @@ class BackupManager:
             "revision": revision,
             "removed_for_space": removed,
         }
+
+    def check_written(self, target: Path):
+        """A set that fails verification right after being written is set aside, never listed,
+        and nothing older is removed because of it."""
+        report = self.verify(target)
+        if report["ok"]:
+            return
+        quarantine = target.with_name(f".{target.name}.reprovado")
+        os.replace(target, quarantine)
+        logger.error("Backup reprovado logo após a gravação: %s %s", target.name, report["errors"])
+        raise HTTPException(
+            500,
+            "O backup gravado foi reprovado na verificação e não foi aceito: "
+            + " ".join(report["errors"])
+            + " Nenhuma cópia anterior foi apagada.",
+        )
+
+    def enforce_cap(self, config: dict, directory: Path) -> list[str]:
+        """After a verified set: removes what the cap requires, in the safe order."""
+        return self.make_room(directory, self.storage_plan(config, directory, 0, 0))
 
     def prune(self, config: dict, directory: Path | None = None):
         """Retention applies to regular sets only; safety copies and imported sets are kept."""
@@ -535,12 +562,19 @@ class BackupManager:
             decision = self.storage_plan(config, target.parent, size, size)
             if not decision.fits:
                 return {"status": "failed", "directory": folder, "error": decision.reason}
-            self.make_room(target.parent, decision)
+            self.make_room(
+                target.parent, self.storage_plan(config, target.parent, size, size, bounded=False)
+            )
             shutil.copyfile(source, part)
             with source.open("rb") as original, part.open("rb") as copied:
                 if sha256(original) != sha256(copied):
                     raise OSError("a cópia ficou diferente do original")
-            part.replace(target)
+            replace_durably(part, target)
+            report = self.verify(target)
+            if not report["ok"]:
+                os.replace(target, target.with_name(f".{name}.reprovado"))
+                raise OSError("a segunda cópia foi reprovada na verificação")
+            self.enforce_cap(config, target.parent)
             self.prune(config, Path(folder))
             return {"status": "ok", "directory": folder}
         except OSError as error:
@@ -661,7 +695,7 @@ class BackupManager:
                             )
             if (directory / name).exists():
                 raise HTTPException(409, f"Já existe um backup importado com o nome {name}.")
-            os.replace(part, directory / name)
+            replace_durably(part, directory / name)
         finally:
             part.unlink(missing_ok=True)
         logger.info("Backup importado: %s (arquivo enviado %s)", name, filename)
@@ -846,6 +880,8 @@ def describe(error: BaseException) -> str:
         return "Pasta ou arquivo não encontrado (disco desconectado?)."
     if isinstance(error, OSError) and error.errno == 28:
         return "Disco cheio."
+    if isinstance(error, OSError) and error.errno is None and error.args:
+        return str(error).capitalize() + "."
     if isinstance(error, OSError):
         return "Erro de gravação no disco: " + (error.strerror or type(error).__name__) + "."
     if isinstance(error, sqlite3.Error):
