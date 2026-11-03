@@ -62,5 +62,20 @@ Cabeça da branch `p1/d-rede` (PR sobre `p1/c-protecao`). Executado no **Linux d
 | Smoke (`scripts/smoke.py`) | aprovado |
 
 Não coberto: estações Windows reais, firewall do Windows, acesso por nome do computador, IPv6, desempenho com muitas estações.
+## 2026-11-03 — SHA `9156985` (P1-C após a auditoria: A3 limites de espaço e M2 durabilidade)
+
+Cabeça da branch `p1/c-protecao` (PR #6) depois das correções autorizadas pela diretiva do arquiteto de 2026-11-03. Bateria executada num **checkout limpo e destacado nesse SHA** (`git worktree add --detach`, `npm ci` do zero), no **Linux da nuvem**, não no Windows; bancos, pastas e servidores temporários.
+
+| Verificação | Resultado |
+| --- | --- |
+| `ruff check` / `ruff format --check` | aprovado |
+| `pytest backend/tests` | 202 passaram, 1 pulado (ACL do Windows). Novos: `test_storage.py` (7: reserva em discos de 32 GB a 2 TB, teto com remoção na ordem segura, recuperação acima do teto, segunda cópia e importação respeitando a reserva, nova tentativa por hora) e `test_durability.py` (3: fsync, conjunto reprovado após gravar não apaga nada, segunda cópia verificada) |
+| Frontend: `npm ci`, lint, `format:check`, Vitest, build | sem erros; 79 testes em 16 arquivos |
+| E2E (`scripts/e2e-auth.py`) | 36 + 4 |
+| Smoke | aprovado |
+
+Discos nos testes: a suíte usa um disco simulado (1 TB, 900 GB livres) por padrão, para não depender da máquina; `test_storage.py` simula discos pequenos, grandes e cheios. No E2E, as bases temporárias recebem limites reduzidos (1 GB livre, 0 %), porque o disco desta máquina (252 GB, 29 GB livres) **não atende** a reserva padrão de 15 % — com o padrão, o backup é recusado, como projetado. Medição do M1 em `docs/P1_SQLITE_CONCORRENCIA.md`.
+
+Pendente no Windows: limites com discos reais, `fsync` no NTFS, pendrive/HD externo, medição do M1 com `scripts/measure_backup_lock.py`. Não declarar homologado.
 
 Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
