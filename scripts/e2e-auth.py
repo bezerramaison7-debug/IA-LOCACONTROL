@@ -68,15 +68,41 @@ def relaxed_backup_limits(url):
         connection.close()
 
 
+def station_spki(certificate: Path) -> str:
+    """Base64 SHA-256 of the server key: the station browser trusts exactly that key, instead of
+    ignoring certificate errors (Chromium --ignore-certificate-errors-spki-list)."""
+    import base64
+    import hashlib
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+
+    leaf = x509.load_pem_x509_certificates(certificate.read_bytes())[0]
+    spki = leaf.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return base64.b64encode(hashlib.sha256(spki).digest()).decode()
+
+
 def run_suite(
-    env, folder, base_url, port, config_name, arguments, log_name, host="127.0.0.1"
+    env,
+    folder,
+    base_url,
+    port,
+    config_name,
+    arguments,
+    log_name,
+    host="127.0.0.1",
+    command_line=None,
+    ready=None,
 ):
     """Start a server on the temporary database and run one Playwright configuration."""
     node = shutil.which("node")
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     with (Path(folder) / log_name).open("w", encoding="utf-8") as log:
         server = subprocess.Popen(
-            [
+            command_line
+            or [
                 sys.executable,
                 "-m",
                 "uvicorn",
@@ -104,6 +130,8 @@ def run_suite(
                     time.sleep(0.1)
             else:
                 raise RuntimeError("Timeout do servidor E2E")
+            if ready:
+                env = {**env, **ready()}
             result = subprocess.run(
                 [
                     node,
@@ -238,25 +266,44 @@ def main():
         # Network edition (ADR-025): the main computer and a station at another address.
         address = own_address()
         if address is None:
-            print("AVISO: sem endereço de rede não loopback; suíte de rede não executada.")
+            print(
+                "AVISO: sem endereço de rede não loopback; suíte de rede não executada."
+            )
         else:
-            network_url = f"sqlite:///{(Path(folder) / 'network.db').as_posix()}"
+            # The real entry point (app.server): HTTP on 127.0.0.1 for the main computer and
+            # HTTPS on the network for the station, with the local CA (P1-E).
+            data = Path(folder) / "rede"
+            data.mkdir()
+            network_url = f"sqlite:///{(data / 'locacontrol.db').as_posix()}"
             config.attributes["database_url"] = network_url
             command.upgrade(config, "head")
             relaxed_backup_limits(network_url)
-            network_port = free_port()
+            network_port, https_port = free_port(), free_port()
             network_base = f"http://127.0.0.1:{network_port}"
             network_env = {
-                **local_env,
+                key: value
+                for key, value in local_env.items()
+                if not key.endswith(("_DIRECTORY", "_DATABASE_URL"))
+            }
+            network_env |= {
+                "LOCACONTROL_DATA_DIR": str(data),
                 "LOCACONTROL_NETWORK_MODE": "true",
                 "LOCACONTROL_STATION_NETWORKS": f'["{address}/32"]',
-                "LOCACONTROL_DATABASE_URL": network_url,
                 "LOCACONTROL_ALLOWED_ORIGINS": f'["{network_base}"]',
-                "LOCACONTROL_BACKUP_DIRECTORY": str(Path(folder) / "network-backups"),
-                "LOCACONTROL_DOCUMENT_DIRECTORY": str(Path(folder) / "network-documents"),
+                "LOCACONTROL_BACKUP_SCHEDULER": "false",
                 "E2E_NETWORK_BASE_URL": network_base,
-                "E2E_STATION_BASE_URL": f"http://{address}:{network_port}",
+                "E2E_STATION_BASE_URL": f"https://{address}:{https_port}",
             }
+
+            def https_ready():
+                for _ in range(100):
+                    try:
+                        with socket.create_connection((address, https_port), timeout=1):
+                            break
+                    except OSError:
+                        time.sleep(0.1)
+                return {"E2E_STATION_SPKI": station_spki(data / "tls" / "server.pem")}
+
             result = run_suite(
                 network_env,
                 folder,
@@ -265,7 +312,16 @@ def main():
                 "playwright.network.config.ts",
                 [],
                 "server-network.log",
-                host="0.0.0.0",
+                command_line=[
+                    sys.executable,
+                    "-m",
+                    "app.server",
+                    "--port",
+                    str(network_port),
+                    "--https-port",
+                    str(https_port),
+                ],
+                ready=https_ready,
             )
             if result.returncode:
                 raise SystemExit(result.returncode)

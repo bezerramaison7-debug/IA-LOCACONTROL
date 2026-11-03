@@ -19,8 +19,14 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     launchOptions: {
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
-      // The station talks to the main computer directly, never through a proxy.
-      args: ['--no-proxy-server'],
+      // The station talks to the main computer directly, never through a proxy, and trusts only
+      // the key of the main computer's certificate (set by scripts/e2e-auth.py), not any error.
+      args: [
+        '--no-proxy-server',
+        ...(process.env.E2E_STATION_SPKI
+          ? ['--ignore-certificate-errors-spki-list=' + process.env.E2E_STATION_SPKI]
+          : []),
+      ],
     },
   },
   projects: [{ name: 'desktop', use: { viewport: { width: 1366, height: 768 } } }],
