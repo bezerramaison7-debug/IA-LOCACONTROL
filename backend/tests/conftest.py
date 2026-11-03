@@ -1,3 +1,4 @@
+import ipaddress
 import shutil
 from collections import namedtuple
 from pathlib import Path
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import PROJECT_ROOT, Settings
 from app.main import create_app
+from app.network import routes as network_routes
 from app.ops.backup import BackupManager
 from app.ops.storage import GB
 
@@ -25,6 +27,16 @@ def roomy_disk(monkeypatch):
         "disk_usage",
         staticmethod(lambda _path: DiskUsage(1000 * GB, 100 * GB, 900 * GB)),
     )
+
+
+@pytest.fixture(autouse=True)
+def store_address(monkeypatch):
+    """The in-process server is the main computer at 192.168.0.10 on the store network (the
+    address the station tests use), whatever addresses the machine running the tests has: the
+    local CA vouches only for the networks this computer is on (SEC-P1E-04). Real-server tests
+    (test_network_server.py, E2E) use the machine's own address."""
+    found = [ipaddress.ip_address(a) for a in ("127.0.0.1", "::1", "192.168.0.10")]
+    monkeypatch.setattr(network_routes, "private_addresses", lambda _extra=None: list(found))
 
 
 @pytest.fixture

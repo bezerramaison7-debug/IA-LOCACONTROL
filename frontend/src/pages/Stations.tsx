@@ -235,6 +235,12 @@ export function Stations() {
                       ', ',
                     )}
                   </dd>
+                  {query.data.tls.ca_networks.length > 0 && (
+                    <>
+                      <dt>Redes da loja no certificado</dt>
+                      <dd>{query.data.tls.ca_networks.join(', ')}</dd>
+                    </>
+                  )}
                   <dt>Proteção das chaves</dt>
                   <dd>{query.data.tls.protection}</dd>
                 </dl>
@@ -254,6 +260,22 @@ export function Stations() {
                       não está no certificado da loja.
                     </strong>
                     <span>As estações devem usar o endereço IP, ou conectar-se de novo.</span>
+                  </div>
+                </div>
+              )}
+              {query.data.tls.available && query.data.tls.addresses_outside_ca.length > 0 && (
+                <div className="padded">
+                  <div className="quote-notice quote-notice-danger" role="alert">
+                    <strong>
+                      O endereço atual deste computador (
+                      {query.data.tls.addresses_outside_ca.join(', ')}) está fora das redes da loja
+                      do certificado.
+                    </strong>
+                    <span>
+                      As estações não conseguem usar esse endereço. Se a loja mudou de rede, um
+                      administrador cria uma nova autoridade neste computador (LocaControl.exe
+                      nova-autoridade --confirmar) e cada estação conecta de novo pelo instalador.
+                    </span>
                   </div>
                 </div>
               )}

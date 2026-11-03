@@ -8,6 +8,7 @@ import os
 
 import pytest
 from cryptography import x509
+from cryptography.x509.oid import ExtendedKeyUsageOID
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
 
 from app.network.tls import (
@@ -31,6 +32,15 @@ def authority(tmp_path):
     return ca
 
 
+@pytest.fixture
+def data_dir_with_tls(tmp_path, monkeypatch):
+    """A pasta de dados cujo tls/ é o da fixture `authority` (sem servidor rodando)."""
+    monkeypatch.setenv("LOCACONTROL_DATA_DIR", str(tmp_path))
+    for name in ("DATABASE_URL", "BACKUP_DIRECTORY"):
+        monkeypatch.delenv(f"LOCACONTROL_{name}", raising=False)
+    return tmp_path
+
+
 def verify(ca: LocalAuthority, leaf, name, now=NOW):
     store = Store([ca.ca_certificate()])
     verifier = PolicyBuilder().store(store).time(now).build_server_verifier(name)
@@ -51,9 +61,16 @@ def test_creates_a_constrained_ca_and_a_server_certificate_with_encrypted_keys(a
     assert constraints.critical
     permitted = constraints.value.permitted_subtrees
     assert {n.value for n in permitted if isinstance(n, x509.DNSName)} == set(NAMES)
-    assert ipaddress.ip_network("192.168.0.0/16") in {
-        n.value for n in permitted if isinstance(n, x509.IPAddress)
+    networks = {n.value for n in permitted if isinstance(n, x509.IPAddress)}
+    # SEC-P1E-04: só a rede da loja (a /24 do endereço) e o próprio computador, não toda faixa
+    # privada.
+    assert networks == {
+        ipaddress.ip_network("127.0.0.0/8"),
+        ipaddress.ip_network("::1/128"),
+        ipaddress.ip_network("192.168.0.0/24"),
     }
+    eku = ca.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+    assert list(eku) == [ExtendedKeyUsageOID.SERVER_AUTH]
     assert (ca.not_valid_after_utc - NOW).days >= 3649
     for key in (authority.ca_key_path, authority.key_path):
         assert b"ENCRYPTED PRIVATE KEY" in key.read_bytes()
@@ -80,6 +97,15 @@ def test_name_constraints_refuse_certificates_for_other_sites(authority):
         certificate, _ = authority.sign(names, addresses, 30, NOW)
         with pytest.raises(VerificationError):
             verify(authority, certificate, subject)
+    # Outras redes privadas também ficam de fora (o roteador, um NAS, outra rede da empresa).
+    for other in ("192.168.1.1", "10.0.0.1", "172.16.0.1"):
+        address = ipaddress.ip_address(other)
+        certificate, _ = authority.sign(["localhost"], [address], 30, NOW)
+        with pytest.raises(VerificationError):
+            verify(authority, certificate, x509.IPAddress(address))
+    same_network = ipaddress.ip_address("192.168.0.200")
+    certificate, _ = authority.sign(["localhost"], [same_network], 30, NOW)
+    assert verify(authority, certificate, x509.IPAddress(same_network))
     # Subdomínios de nomes permitidos continuam permitidos (comportamento das Name Constraints).
     certificate, _ = authority.sign(["x.localhost"], [], 30, NOW)
     assert verify(authority, certificate, x509.DNSName("x.localhost"))
@@ -94,6 +120,11 @@ def test_reuses_the_ca_and_renews_the_server_certificate_only_when_due(authority
     assert renewed["issued"] == "renovação por prazo" and leaf(authority).serial_number != serial
     moved = authority.ensure(NAMES, [*ADDRESSES[:2], ipaddress.ip_address("10.0.0.7")], now=NOW)
     assert moved["issued"] == "nomes ou endereços mudaram"
+    # Mudou de rede (SEC-P1E-04): o endereço novo fica fora do certificado e é informado.
+    assert moved["addresses_outside_ca"] == ["10.0.0.7"]
+    assert "10.0.0.7" not in moved["server_addresses"]
+    same = authority.ensure(NAMES, [*ADDRESSES[:2], ipaddress.ip_address("192.168.0.77")], now=NOW)
+    assert same["addresses_outside_ca"] == [] and "192.168.0.77" in same["server_addresses"]
     assert fingerprint(authority.ca_der()) == ca_before  # a CA nunca muda sozinha
     # Computador renomeado depois da CA: o nome novo fica de fora e é informado.
     renamed = authority.ensure(["localhost", "outro-pc"], ADDRESSES, now=NOW)
@@ -140,3 +171,33 @@ def test_dpapi_protects_the_key_password(tmp_path):
     ca = LocalAuthority(tmp_path / "tls", secret)
     ca.ensure(NAMES, ADDRESSES, now=NOW)
     assert b"segredo" not in ca.password_path.read_bytes()
+
+
+def test_no_store_address_yet_means_no_authority_yet(tmp_path):
+    """Sem endereço na rede local, uma CA criada agora ficaria presa ao loopback: a rede fica
+    fechada e nada é criado (SEC-P1E-04)."""
+    loopback = [ipaddress.ip_address("127.0.0.1"), ipaddress.ip_address("::1")]
+    authority = LocalAuthority(tmp_path / "tls")
+    with pytest.raises(TlsUnavailable, match="ainda não tem endereço"):
+        authority.ensure(NAMES, loopback, now=NOW)
+    assert not authority.folder.exists()
+    # Uma rede declarada nas configurações basta.
+    declared = authority.ensure(NAMES, loopback, now=NOW, networks=["100.64.0.0/10"])
+    assert "100.64.0.0/10" in declared["ca_networks"]
+
+
+def test_a_new_authority_for_a_new_network(authority, data_dir_with_tls):
+    """`LocaControl.exe nova-autoridade --confirmar`: a CA anterior é guardada, não apagada, e a
+    próxima é outra; sem --confirmar nada acontece."""
+    from app import launcher
+
+    before = fingerprint(authority.ca_der())
+    assert launcher.main(["nova-autoridade"]) == 64
+    assert authority.folder.exists()
+    assert launcher.main(["nova-autoridade", "--confirmar"]) == 0
+    assert not authority.folder.exists()
+    kept = list(authority.folder.parent.glob("tls-anterior-*"))
+    assert len(kept) == 1 and (kept[0] / "ca.key").exists()
+    fresh = LocalAuthority(authority.folder)
+    fresh.ensure(NAMES, ADDRESSES, now=NOW)
+    assert fingerprint(fresh.ca_der()) != before

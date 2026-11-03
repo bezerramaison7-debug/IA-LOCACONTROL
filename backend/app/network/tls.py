@@ -170,6 +170,32 @@ def private_addresses(extra_networks: list | None = None) -> list:
     return sorted(found, key=lambda a: (a.version, int(a)))
 
 
+# Always vouched for: this computer itself.
+LOOPBACK_NETWORKS = [ipaddress.ip_network(n) for n in ("127.0.0.0/8", "::1/128")]
+# Width of the store network around each address of the main computer (SEC-P1E-04): the usual
+# store router hands out a /24; a wider network is declared in LOCACONTROL_STATION_NETWORKS.
+STORE_PREFIX = {4: 24, 6: 64}
+
+
+def store_networks(addresses: list, extra_networks: list | None = None) -> list:
+    """What the CA may certify (SEC-P1E-04): loopback, the network of each private address this
+    computer has (IPv4 /24, IPv6 ULA /64; link-local is left out) and the networks declared in
+    the settings — not every private range, so a stolen CA key cannot impersonate a router, a
+    NAS or another intranet service elsewhere in 10/8 or 192.168/16."""
+    networks = list(LOOPBACK_NETWORKS)
+    for address in addresses:
+        if address.is_loopback or address.is_link_local:
+            continue
+        network = ipaddress.ip_network(f"{address}/{STORE_PREFIX[address.version]}", strict=False)
+        if network not in networks:
+            networks.append(network)
+    for network in extra_networks or []:
+        network = ipaddress.ip_network(network, strict=False)
+        if network not in networks:
+            networks.append(network)
+    return networks
+
+
 # ---- the authority ---------------------------------------------------------------------------
 
 
@@ -256,13 +282,23 @@ class LocalAuthority:
     def ca_pem(self) -> bytes:
         return self.ca_cert_path.read_bytes()
 
+    def retire(self, now: dt.datetime | None = None) -> Path | None:
+        """Moves the whole authority aside (`tls-anterior-<data>`); the next start creates a new
+        one. Used when the store moves to another network (SEC-P1E-04). Never deletes."""
+        if not self.folder.exists():
+            return None
+        stamp = (now or dt.datetime.now(dt.UTC)).strftime("%Y%m%d-%H%M%S")
+        target = self.folder.with_name(f"{self.folder.name}-anterior-{stamp}")
+        os.replace(self.folder, target)
+        return target
+
     def _create_ca(
         self, names: list[str], label: str, password: bytes, now: dt.datetime, networks=()
     ):
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.x509.oid import NameOID
+        from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
         key = ec.generate_private_key(ec.SECP256R1())
         subject = x509.Name(
@@ -273,7 +309,7 @@ class LocalAuthority:
         )
         constraints = x509.NameConstraints(
             permitted_subtrees=[x509.DNSName(n) for n in names]
-            + [x509.IPAddress(network) for network in [*PERMITTED_NETWORKS, *networks]],
+            + [x509.IPAddress(network) for network in networks],
             excluded_subtrees=None,
         )
         certificate = (
@@ -300,6 +336,9 @@ class LocalAuthority:
                 critical=True,
             )
             .add_extension(constraints, critical=True)
+            # Only TLS servers (SEC-P1E-04): Windows, Chrome and Firefox apply a CA's EKU to the
+            # whole chain, so even this key could not issue code-signing or e-mail certificates.
+            .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
             .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), False)
             .sign(key, hashes.SHA256())
         )
@@ -309,8 +348,16 @@ class LocalAuthority:
         self._write(self.ca_cert_path, certificate.public_bytes(serialization.Encoding.PEM))
         logger.warning("Autoridade certificadora local criada: %s", fingerprint(self.ca_der()))
 
-    def sign(self, names: list[str], addresses: list, days: int, now: dt.datetime | None = None):
-        """Issues a server certificate with the CA (also used by tests to probe constraints)."""
+    def sign(
+        self,
+        names: list[str],
+        addresses: list,
+        days: int,
+        now: dt.datetime | None = None,
+        usages: list | None = None,
+    ):
+        """Issues a server certificate with the CA (also used by tests to probe constraints;
+        `usages` other than serverAuth exist only to prove they are refused)."""
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -336,7 +383,9 @@ class LocalAuthority:
                 critical=False,
             )
             .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-            .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+            .add_extension(
+                x509.ExtendedKeyUsage(usages or [ExtendedKeyUsageOID.SERVER_AUTH]), critical=False
+            )
             .add_extension(
                 x509.AuthorityKeyIdentifier.from_issuer_public_key(ca.public_key()), False
             )
@@ -363,24 +412,34 @@ class LocalAuthority:
         creating = not self.ca_cert_path.exists()
         if creating and (self.ca_key_path.exists() or self.password_path.exists()):
             raise TlsUnavailable("Arquivos TLS incompletos: falta o certificado da autoridade.")
+        scope = store_networks(addresses, networks)
+        if creating and len(scope) == len(LOOPBACK_NETWORKS):
+            # Without an address on the store network there is nothing to vouch for yet; making
+            # the CA now would lock it to loopback. The network stays closed until there is one.
+            raise TlsUnavailable(
+                "Este computador ainda não tem endereço na rede local; a rede da loja abre quando "
+                "houver (reinicie o LocaControl depois de conectar o cabo ou o Wi-Fi)."
+            )
         password = self._password(create=creating)
         if creating:
-            # Extra store networks declared in the settings are vouched for too (ADR-026).
-            self._create_ca(names, label, password, now, networks or [])
+            self._create_ca(names, label, password, now, scope)
         ca = self.ca_certificate()
-        permitted = {
-            n.value
-            for n in ca.extensions.get_extension_for_class(
-                x509.NameConstraints
-            ).value.permitted_subtrees
-            if isinstance(n, x509.DNSName)
-        }
-        # A computer renamed after the CA was made: its new name is outside the CA (ADR-026);
-        # the certificate keeps the permitted names and the addresses.
+        subtrees = ca.extensions.get_extension_for_class(x509.NameConstraints).value
+        permitted = {n.value for n in subtrees.permitted_subtrees if isinstance(n, x509.DNSName)}
+        permitted_networks = [
+            n.value for n in subtrees.permitted_subtrees if isinstance(n, x509.IPAddress)
+        ]
+        # A computer renamed or moved to another network after the CA was made: what is outside
+        # the CA is left out of the certificate and reported (ADR-026, SEC-P1E-04).
         usable = [n for n in names if n in permitted] or ["localhost"]
-        reason = self._renewal_reason(usable, addresses, now)
+        inside = [
+            a
+            for a in addresses
+            if any(a in network for network in permitted_networks if network.version == a.version)
+        ]
+        reason = self._renewal_reason(usable, inside, now)
         if reason:
-            certificate, key = self.sign(usable, addresses, SERVER_DAYS, now)
+            certificate, key = self.sign(usable, inside, SERVER_DAYS, now)
             self._save_key(self.key_path, key, password)
             chain = certificate.public_bytes(serialization.Encoding.PEM) + self.ca_pem()
             self._write(self.cert_path, chain)
@@ -392,8 +451,10 @@ class LocalAuthority:
             "ca_expires": ca.not_valid_after_utc.isoformat(),
             "server_expires": current.not_valid_after_utc.isoformat(),
             "server_names": usable,
-            "server_addresses": [str(a) for a in addresses],
+            "server_addresses": [str(a) for a in inside],
             "renamed_outside_ca": [n for n in names if n not in permitted],
+            "addresses_outside_ca": [str(a) for a in addresses if a not in inside],
+            "ca_networks": [str(n) for n in permitted_networks],
             "protection": self.secret.kind,
             "issued": reason or None,
         }

@@ -40,6 +40,9 @@ export const stationsSchema = z.object({
         server_names: z.array(z.string()),
         server_addresses: z.array(z.string()),
         renamed_outside_ca: z.array(z.string()),
+        /** SEC-P1E-04: addresses of this computer outside the store networks of the CA. */
+        addresses_outside_ca: z.array(z.string()).default([]),
+        ca_networks: z.array(z.string()).default([]),
         protection: z.string(),
       }),
       z.object({ available: z.literal(false), error: z.string() }),

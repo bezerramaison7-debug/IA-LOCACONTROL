@@ -184,3 +184,27 @@ it('an unreadable station list blocks stations and is reset only with the exact 
     ]),
   )
 })
+
+it('shows the store networks of the certificate and warns when this computer left them', async () => {
+  const tls = {
+    available: true,
+    ca_fingerprint: 'AB:CD',
+    ca_expires: '2036-11-03T12:00:00+00:00',
+    server_expires: '2027-12-05T12:00:00+00:00',
+    server_names: ['localhost', 'loja-pc'],
+    server_addresses: ['127.0.0.1'],
+    renamed_outside_ca: [],
+    addresses_outside_ca: ['10.0.0.7'],
+    ca_networks: ['127.0.0.0/8', '::1/128', '192.168.0.0/24'],
+    protection: 'DPAPI do Windows (conta do serviço LocaControl)',
+  }
+  renderPage(
+    <Stations />,
+    mockRequest(() => ({ ...overview, tls })),
+    { local: true },
+  )
+  expect(await screen.findByText('127.0.0.0/8, ::1/128, 192.168.0.0/24')).toBeInTheDocument()
+  const alert = screen.getByRole('alert')
+  expect(alert).toHaveTextContent('(10.0.0.7) está fora das redes da loja')
+  expect(alert).toHaveTextContent('nova-autoridade --confirmar')
+})

@@ -8,6 +8,7 @@
   under its own identity `NT SERVICE\\LocaControl`; only the service manager starts this verb;
 - `conectar --servidor <endereço> --codigo <código>`: "Conectar à loja" (app.network.connect);
 - `desconectar`: removes the trust a station installed (uninstall);
+- `nova-autoridade --confirmar`: replaces the store's CA after a change of network (SEC-P1E-04);
 - `parar`: controlled stop of the server of this data folder (update and uninstall, REL-P1E-02):
   asks it to finish what is in progress and waits; forces only after the wait, and never with
   `--sem-forcar`.
@@ -190,6 +191,35 @@ def stop(wait: float = STOP_WAIT, force: bool = True) -> int:
     return EXIT_FORCED
 
 
+def new_authority() -> int:
+    """SEC-P1E-04: the store moved to another network (or the CA must be replaced). Stops the
+    server in a controlled way, moves the CA aside (never deletes it) and starts again; the next
+    start creates a new CA for the networks of now. Every station must connect again."""
+    from app import winservice
+    from app.core.config import Settings
+    from app.network.stations import registry_for
+    from app.network.tls import TLS_FOLDER, LocalAuthority
+
+    folder = registry_for(Settings()).path.parent / TLS_FOLDER
+    was_service = winservice.running()
+    code = stop(force=False)
+    if code:
+        return code
+    try:
+        moved = LocalAuthority(folder).retire()
+    except PermissionError:
+        print("Sem permissão (use uma conta de administrador).", file=sys.stderr)
+        return EXIT_NO_PERMISSION
+    print(
+        f"Autoridade anterior guardada em {moved}. " if moved else "Não havia autoridade. ",
+        "Uma nova será criada no próximo início do servidor. Em cada estação, execute de novo "
+        'o instalador com "Conectar à loja" e um código novo.',
+    )
+    if was_service:
+        winservice.start()
+    return 0
+
+
 def kill(pid: int):
     if os.name == "nt":
         subprocess.run(
@@ -258,6 +288,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--sem-forcar", action="store_true")
         args = parser.parse_args(argv)
         return stop(args.espera, force=not args.sem_forcar)
+    if verb == "nova-autoridade":
+        parser.add_argument("--confirmar", action="store_true")
+        args = parser.parse_args(argv)
+        if not args.confirmar:
+            print(
+                "Cria uma nova autoridade certificadora da loja (quando a loja muda de rede). "
+                "Todas as estações precisarão conectar de novo. Repita com --confirmar.",
+                file=sys.stderr,
+            )
+            return 64
+        return new_authority()
     if verb == "abrir":
         parser.add_argument("--sem-navegador", action="store_true")
         args = parser.parse_args(argv)
