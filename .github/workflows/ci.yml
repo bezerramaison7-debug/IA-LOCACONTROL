@@ -1,0 +1,157 @@
+# CI do LocaControl (P1-E, docs/P1E_PROPOSTA.md §8). Máquinas descartáveis do GitHub: o que passa
+# aqui NÃO é homologação em computador físico da loja (ver docs/VALIDATION.md).
+# Sem publicação: nenhum release, nenhum deploy; o instalador gerado fica como artefato privado
+# do repositório por 7 dias, só para teste manual.
+name: CI
+
+on:
+  push:
+    branches: ["main", "p1/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  linux:
+    name: Linux — verificações, testes, E2E e smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: ${{ github.workspace }}/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Dependências do backend (travadas)
+        run: |
+          python -m pip install -r backend/requirements-lock.txt
+          python -m pip install --no-deps --no-build-isolation -e ./backend
+      - name: Ruff
+        run: |
+          python -m ruff check backend scripts/smoke.py scripts/e2e-auth.py scripts/ci/make_certificates.py
+          python -m ruff format --check backend
+      - name: Pytest
+        run: python -m pytest backend/tests -q -p no:cacheprovider -rs
+      - name: Interface — dependências, lint, formatação, testes e build
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm run format:check
+          npm run test
+          npm run build
+      - name: Chromium do Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: E2E (navegador + API, edição local, rede da loja por HTTPS)
+        run: python scripts/e2e-auth.py
+      - name: Smoke
+        run: python scripts/smoke.py
+
+  windows-tests:
+    name: Windows — testes do backend
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Ambiente do projeto (.venv, dependências travadas)
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install -r backend\requirements-lock.txt
+          .\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .\backend
+      - name: Pytest (inclui DPAPI e ACL, que só rodam no Windows)
+        env:
+          PYTHONPATH: ${{ github.workspace }}\backend
+        run: .\.venv\Scripts\python.exe -m pytest backend\tests -q -p no:cacheprovider -rs
+
+  windows-installer:
+    name: Windows — instalador, Name Constraints, instalação/atualização/desinstalação
+    runs-on: windows-2022
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Ambiente do projeto (.venv, dependências travadas, PyInstaller)
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install -r backend\requirements-lock.txt pyinstaller==6.22.3
+          .\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .\backend
+      - name: Interface (build)
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Name Constraints no verificador do Windows (CryptoAPI)
+        env:
+          PYTHONPATH: ${{ github.workspace }}\backend
+        run: |
+          .\.venv\Scripts\python.exe scripts\ci\make_certificates.py "$env:RUNNER_TEMP\nc"
+          .\scripts\ci\name-constraints.ps1 -Folder "$env:RUNNER_TEMP\nc"
+      - name: Inno Setup 6
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup --yes --no-progress }
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe não encontrado depois da instalação.' }
+          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Executável (PyInstaller) e dois instaladores (versão e atualização)
+        run: |
+          .\scripts\installer.ps1 -AppVersion 0.1.0
+          .\scripts\installer.ps1 -AppVersion 0.1.1 -SkipPackage
+      - name: Instalação, uso, estação, atualização e desinstalação (modo silencioso)
+        run: >
+          .\scripts\ci\windows-install-test.ps1
+          -Setup dist-installer\LocaControl-Setup-0.1.0.exe
+          -Upgrade dist-installer\LocaControl-Setup-0.1.1.exe
+      - name: Registros da instalação
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ci-logs
+          path: ci-logs
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Instalador (artefato privado, só para teste manual)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocaControl-Setup-0.1.0
+          path: dist-installer/LocaControl-Setup-0.1.0.exe
+          retention-days: 7
