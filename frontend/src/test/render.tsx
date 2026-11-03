@@ -15,7 +15,13 @@ export function mockRequest(handler: Handler) {
 export function renderPage(
   ui: ReactNode,
   request: ReturnType<typeof mockRequest>,
-  options: { entry?: string; permissions?: string[]; clear?: () => void; local?: boolean } = {},
+  options: {
+    entry?: string
+    permissions?: string[]
+    clear?: () => void
+    local?: boolean
+    station?: { id: string; name: string } | null
+  } = {},
 ) {
   const user = {
     ...adminSession.user,
@@ -29,6 +35,7 @@ export function renderPage(
         value={{
           user,
           local: options.local,
+          station: options.station ?? null,
           loading: false,
           error: '',
           refresh: async () => {},

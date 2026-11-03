@@ -27,6 +27,7 @@ const Roles = lazy(() => import('./pages/Roles').then((m) => ({ default: m.Roles
 const Reports = lazy(() => import('./pages/Reports').then((m) => ({ default: m.Reports })))
 const Fiscal = lazy(() => import('./pages/Fiscal').then((m) => ({ default: m.Fiscal })))
 const Backups = lazy(() => import('./pages/Backups').then((m) => ({ default: m.Backups })))
+const Stations = lazy(() => import('./pages/Stations').then((m) => ({ default: m.Stations })))
 const Portal = lazy(() => import('./pages/Portal').then((m) => ({ default: m.Portal })))
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })))
 
@@ -78,6 +79,7 @@ export default function App() {
                     <Route path="faturamento" element={<Fiscal />} />
                     <Route path="fiscal" element={<Navigate to="/faturamento" replace />} />
                     <Route path="backups" element={<Backups />} />
+                    <Route path="estacoes" element={<Stations />} />
                     <Route path="portal" element={<Portal key="inicio" view="inicio" />} />
                     {(
                       [

@@ -21,6 +21,8 @@ from app.drafts.routes import router as drafts_router
 from app.fiscal.routes import router as fiscal_router
 from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
+from app.network.routes import router as stations_router
+from app.network.stations import registry_for
 from app.ops.backup import BackupManager, BackupScheduler
 from app.ops.maintenance import MaintenanceGate, MaintenanceMiddleware
 from app.ops.routes import router as backups_router
@@ -81,6 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="LocaControl API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.gate = MaintenanceGate()
+    # Paired stations of the store network (ADR-025); outside the database on purpose.
+    app.state.stations = registry_for(settings)
     app.add_middleware(MaintenanceMiddleware, gate=app.state.gate)
     app.add_middleware(
         CORSMiddleware,
@@ -88,7 +92,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
         allow_headers=["Content-Type", "X-CSRF-Token", "X-LocaControl-Request"],
-        expose_headers=["X-LocaControl-Edition", "X-LocaControl-Retry"],
+        expose_headers=["X-LocaControl-Edition", "X-LocaControl-Retry", "X-LocaControl-Pairing"],
     )
 
     @app.middleware("http")
@@ -131,6 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(fiscal_router)
     app.include_router(backups_router)
     app.include_router(drafts_router)
+    app.include_router(stations_router)
     dist = resource("frontend/dist")
     if dist.is_dir():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")

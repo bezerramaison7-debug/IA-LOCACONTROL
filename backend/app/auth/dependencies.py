@@ -9,6 +9,13 @@ from sqlalchemy.orm import Session
 from app.auth.catalog import permission_codes
 from app.auth.models import AuthSession, User
 from app.auth.security import COOKIE, csrf_token, digest
+from app.network.stations import (
+    NOT_PAIRED,
+    STATION_COOKIE,
+    from_store_network,
+    peer_address,
+    same_origin,
+)
 
 
 def database(request: Request):
@@ -28,11 +35,38 @@ DB = Annotated[Session, Depends(database, scope="function")]
 
 
 def trusted_request(request: Request):
-    if (
-        request.headers.get("origin") not in request.app.state.settings.allowed_origins
-        or request.headers.get("x-locacontrol-request") != "1"
-    ):
+    settings = request.app.state.settings
+    origin = request.headers.get("origin")
+    # A station's page comes from the address it used to reach this server (ADR-025).
+    lan = settings.local_mode and settings.network_mode and same_origin(request)
+    if (origin not in settings.allowed_origins and not lan) or request.headers.get(
+        "x-locacontrol-request"
+    ) != "1":
         raise HTTPException(403, "Origem da solicitação não permitida.")
+
+
+def bound_station(request: Request, session: AuthSession) -> dict | None:
+    """Local edition: who the session belongs to must still be true at every request.
+
+    A station session needs its own valid, unrevoked station cookie and a store-network peer;
+    a session of this computer, with the network open, needs a loopback peer.
+    """
+    settings = request.app.state.settings
+    if not settings.local_mode:
+        return None
+    if session.station_id:
+        peer = peer_address(request)
+        station = request.app.state.stations.authenticate(
+            request.cookies.get(STATION_COOKIE), str(peer) if peer else None
+        )
+        if not station or station["id"] != session.station_id or not from_store_network(request):
+            raise HTTPException(401, NOT_PAIRED)
+        return station
+    if settings.network_mode:
+        peer = peer_address(request)
+        if peer is None or not peer.is_loopback:
+            raise HTTPException(401, NOT_PAIRED)
+    return None
 
 
 def current_user(request: Request, db: DB) -> User:
@@ -43,6 +77,10 @@ def current_user(request: Request, db: DB) -> User:
     user = db.get(User, session.user_id)
     if not user or not user.is_active:
         raise HTTPException(401, "Sua sessão expirou. Entre novamente.")
+    station = bound_station(request, session)
+    # Read by the audit label, the draft owner and the "main computer only" guard.
+    request.state.station = station
+    db.info["station"] = station
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         trusted_request(request)
         if not secrets.compare_digest(request.headers.get("x-csrf-token", ""), csrf_token(token)):

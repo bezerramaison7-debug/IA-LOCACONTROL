@@ -15,9 +15,21 @@ Ligada por `LOCACONTROL_LOCAL_MODE=true` (padrão `false`; com `false` tudo abai
 3. há o cabeçalho `X-LocaControl-Request: 1` — uma página de outro site não consegue enviá-lo sem pré-verificação CORS, que é recusada fora de `cors_origins`;
 4. a `Origin`, quando enviada, está em `allowed_origins`.
 
-Escritas continuam exigindo origem permitida, o cabeçalho do app e o `X-CSRF-Token` da sessão (403 caso contrário). O launcher escuta só em `127.0.0.1`. Limite: um proxy local que repasse pedidos da rede para o servidor (por exemplo o Vite exposto com `--host`) faria pedidos externos parecerem locais; não exponha o servidor nem o proxy de desenvolvimento na rede em modo local. Estações da rede serão autorizadas por código de pareamento (PR de rede).
+Escritas continuam exigindo origem permitida, o cabeçalho do app e o `X-CSRF-Token` da sessão (403 caso contrário). O launcher escuta só em `127.0.0.1`. Limite: um proxy local que repasse pedidos da rede para o servidor (por exemplo o Vite exposto com `--host`) faria pedidos externos parecerem locais; não exponha o servidor nem o proxy de desenvolvimento na rede em modo local. Estações da rede são autorizadas por código de pareamento (seção seguinte, ADR-025).
 
 Respostas de `/api` em modo local trazem `X-LocaControl-Edition: local`, para a interface mostrar "sem acesso" em vez de uma tela de login.
+
+### Rede da loja e estações (ADR-025, P1-D)
+
+Só com `LOCACONTROL_LOCAL_MODE=true` e `LOCACONTROL_NETWORK_MODE=true` o servidor escuta na rede. O resto da rede continua recebendo 401; um computador da rede privada recebe 401 com `X-LocaControl-Pairing: available`, para a interface mostrar a tela de pareamento.
+
+- **Pareamento** (`POST /api/stations/pair`, único caminho sem sessão): par TCP na rede da loja (10/8, 172.16/12, 192.168/16, fc00::/7, fe80::/10 e `LOCACONTROL_STATION_NETWORKS`), `Host` = IP dessas redes, nome deste computador ou `LOCACONTROL_STATION_HOSTS` (bloqueia DNS rebinding), `Origin` = `http://<Host>` e `X-LocaControl-Request: 1`. Código de 8 caracteres (~40 bits) gerado no principal, 10 minutos, uso único, só o hash guardado; 5 erros cancelam o código; 10 erros de um endereço em 15 minutos → 429 por 15 minutos.
+- **Credencial da estação**: token aleatório de 32 bytes no cookie `locacontrol_station` (HttpOnly, SameSite=Strict, `Path=/api`); no servidor só o SHA-256, em `stations.json`, fora do banco e dos backups. Não há senha de usuário.
+- **Verificação a cada requisição** (`bound_station`): sessão de estação exige o cookie da mesma estação, ativa, e par na rede da loja; sessão do principal, com o modo rede ligado, exige par loopback. Revogar apaga as sessões da estação; sessões antigas trazidas por uma restauração também são recusadas.
+- **Escritas de estação**: `Origin` = `http://<Host>` (com o `Host` validado acima), `X-LocaControl-Request: 1` e `X-CSRF-Token` da sessão; CORS sem mudança (mesma origem).
+- **Só no computador principal** (403): configurar, baixar, importar e restaurar backups; gerar e cancelar código, listar, revogar e consultar estações.
+- **Auditoria** por estação (`operador local · estação <nome> (<id8>) · instalação <id8>`), eventos de pareamento/recusa/revogação no próprio registro (preservados nas restaurações).
+- **Risco aceito** (decisão do usuário 9): HTTP sem criptografia na rede da loja. Quem capturar o tráfego pode copiar os cookies de uma estação e usá-los de outro computador da mesma rede privada; mitigação: rede da loja fechada e revogação. Fora da rede privada os cookies não funcionam.
 
 ### Matriz de rotas em modo local
 
@@ -42,7 +54,9 @@ Respostas de `/api` em modo local trazem `X-LocaControl-Edition: local`, para a 
 | Dashboard, relatórios, resumo do cliente (`/api/dashboard`, `/api/reports*`, `/api/customers/{id}/summary`) | igual |
 | Fiscal (`/api/fiscal/*`) | igual |
 | Backups: listar, configurar, executar, verificar, baixar | igual |
-| `POST /api/backups/{nome}/restore` | **sem senha**; exige a frase exata `RESTAURAR <nome>` (422 se diferente), modo manutenção e cópia `_pre-restore` |
+| `POST /api/backups/{nome}/restore` | **sem senha**; exige a frase exata `RESTAURAR <nome>` (422 se diferente), modo manutenção e cópia `_pre-restore`; só no computador principal (estação: 403) |
+| `PUT /api/backups/config`, download e importação de backup | só no computador principal (estação: 403) |
+| `/api/stations*` | `pair` para a rede da loja; o resto só no computador principal |
 
 O 404 vem de uma guarda explícita (`not_in_local_mode`) que roda antes da autenticação e responde "Recurso indisponível na edição local." O código dessas rotas permanece para a edição com login e para uma futura edição web.
 

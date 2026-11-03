@@ -2125,3 +2125,23 @@ dd {
 .draft-status-error {
   color: var(--danger);
 }
+.pairing-code {
+  font-size: 1.75rem;
+  letter-spacing: 0.2em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.definition-list {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.definition-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .definition-list {
+    grid-template-columns: 1fr;
+  }
+}

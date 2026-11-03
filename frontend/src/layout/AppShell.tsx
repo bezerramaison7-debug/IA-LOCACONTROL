@@ -19,7 +19,7 @@ import { canOpen, homePath, isPortalUser, useAuth } from '../auth/context'
 import type { AuthUser } from '../auth/api'
 
 /** The menu of the signed-in account: the portal for customers, the workspace otherwise. */
-function allowedNavigation(user: AuthUser | null, local?: boolean) {
+function allowedNavigation(user: AuthUser | null, local?: boolean, station?: unknown) {
   return (isPortalUser(user) ? portalNavigation : navigation)
     .map((group) => ({
       ...group,
@@ -27,6 +27,8 @@ function allowedNavigation(user: AuthUser | null, local?: boolean) {
         (item) =>
           (!user?.must_change_password || item.path === '/perfil') &&
           !(local && item.path === '/perfil') &&
+          // Stations exist only in the local edition and are managed on the main computer.
+          !(item.path === '/estacoes' && (!local || station)) &&
           canOpen(user, item.path),
       ),
     }))
@@ -34,10 +36,10 @@ function allowedNavigation(user: AuthUser | null, local?: boolean) {
 }
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
-  const { user, local } = useAuth()
+  const { user, local, station } = useAuth()
   return (
     <nav aria-label="Navegação principal" className="navigation">
-      {allowedNavigation(user, local).map((group) => (
+      {allowedNavigation(user, local, station).map((group) => (
         <div className="nav-group" key={group.label}>
           <p className="nav-group-label">{group.label}</p>
           {group.items.map((item) => (
@@ -60,11 +62,11 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function AppShell() {
-  const { user, local, logout } = useAuth()
+  const { user, local, station, logout } = useAuth()
   const [logoutError, setLogoutError] = useState('')
   const [loggingOut, setLoggingOut] = useState(false)
   const portal = isPortalUser(user)
-  const groups = allowedNavigation(user, local)
+  const groups = allowedNavigation(user, local, station)
   const allowedItems = groups.flatMap((group) => group.items)
   const signOut = async () => {
     setLoggingOut(true)
@@ -138,7 +140,11 @@ export function AppShell() {
             {local ? (
               <div>
                 <strong>{user?.name}</strong>
-                <small>Uso neste computador, sem login</small>
+                <small>
+                  {station
+                    ? 'Estação ' + station.name + ' · rede da loja'
+                    : 'Uso neste computador, sem login'}
+                </small>
               </div>
             ) : (
               <>

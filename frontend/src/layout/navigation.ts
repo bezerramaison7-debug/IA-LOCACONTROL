@@ -22,6 +22,7 @@ import {
   FileCheck,
   ClipboardCheck,
   IdCard,
+  Network,
 } from 'lucide-react'
 
 export const navigation = [
@@ -63,6 +64,7 @@ export const navigation = [
       { path: '/perfis', label: 'Perfis e permissões', icon: Users, ready: true },
       { path: '/auditoria', label: 'Auditoria', icon: History, ready: true },
       { path: '/backups', label: 'Backups', icon: DatabaseBackup, ready: true },
+      { path: '/estacoes', label: 'Estações da rede', icon: Network, ready: true },
       { path: '/perfil', label: 'Meu perfil', icon: UserRoundCog, ready: true },
       { path: '/configuracoes', label: 'Configurações', icon: Settings, ready: true },
     ],

@@ -136,6 +136,8 @@ Com `--prepare`, o servidor só prepara o banco e encerra.
 
 **Executável (prova de empacotamento)**: `scripts\package.ps1` gera `dist-app\LocaControl\LocaControl.exe` a partir de `packaging\locacontrol.spec`. A saída é uma pasta com `_internal\`, ignorada pelo Git, e o comando requer `pip install pyinstaller==6.22.3` no `.venv` e o `frontend\dist` compilado. O executável recebe `LOCACONTROL_DATA_DIR` e `LOCACONTROL_LOCAL_MODE` por variável de ambiente (ou pelo `.env` da pasta de dados, exceto `LOCACONTROL_DATA_DIR`) e a porta por `--port`. O instalador e o teste em Windows limpo ficam para o P1-E.
 
+**Modo rede (P1-D, ADR-025)**: com `LOCACONTROL_LOCAL_MODE=true` e `LOCACONTROL_NETWORK_MODE=true` o servidor escuta em todas as interfaces (sem o modo rede, só em `127.0.0.1`) e aceita estações pareadas da rede privada. Opcionais: `LOCACONTROL_STATION_NETWORKS` (redes extras, por exemplo `["100.64.0.0/10"]`) e `LOCACONTROL_STATION_HOSTS` (nomes extras pelos quais as estações chegam ao servidor, além do IP e do nome do computador). A lista de estações fica em `stations.json` na pasta de dados, fora dos backups: copie a pasta de dados inteira para levar o principal para outro computador sem parear de novo. A regra de firewall do Windows limitada à rede local e a escolha "Usar neste computador" × "Conectar à loja" ficam para o instalador (P1-E).
+
 ## 7. Uso por outros computadores da rede
 
 O atalho de início não libera acesso pela rede. Para isso é preciso, no mínimo:

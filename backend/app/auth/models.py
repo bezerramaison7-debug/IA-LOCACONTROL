@@ -58,6 +58,10 @@ class AuthSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[int] = mapped_column(Integer)
     expires_at: Mapped[int] = mapped_column(Integer, index=True)
+    # Network edition (ADR-025): the paired station this session belongs to; None is this
+    # computer. Checked against the station registry at every request, so a session restored
+    # from a backup never outlives a revocation.
+    station_id: Mapped[str | None] = mapped_column(String(36), index=True)
 
 
 class LoginThrottle(Base):

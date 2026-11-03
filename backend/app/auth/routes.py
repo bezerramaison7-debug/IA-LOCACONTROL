@@ -17,6 +17,15 @@ from app.auth.local import (
 from app.auth.models import AuditLog, AuthSession, Permission, Role, User
 from app.auth.security import COOKIE, csrf_token, digest
 from app.auth.service import IdentityService, user_view
+from app.network.stations import (
+    NOT_PAIRED,
+    STATION_COOKIE,
+    STATION_COOKIE_DAYS,
+    from_store_network,
+    peer_address,
+    station_request,
+    store_host,
+)
 
 router = APIRouter(prefix="/api", tags=["Identidade e segurança"])
 # Login, passwords, users and roles do not exist in the local edition (ADR-023).
@@ -51,8 +60,10 @@ def login(payload: schemas.Login, request: Request, response: Response, db: DB):
     return result
 
 
-def open_local_session(request: Request, response: Response, db) -> tuple[str, User]:
-    """Local edition: a session of the local operator for a browser on this computer."""
+def open_local_session(
+    request: Request, response: Response, db, station: dict | None = None
+) -> tuple[str, User]:
+    """Local edition: a session of the local operator for this computer or a paired station."""
     settings = request.app.state.settings
     # GET has no writer lock by default; take it so two first tabs do not race.
     db.execute(text("BEGIN IMMEDIATE"))
@@ -66,11 +77,30 @@ def open_local_session(request: Request, response: Response, db) -> tuple[str, U
             user_id=user.id,
             created_at=now,
             expires_at=now + settings.session_hours * 3600,
+            station_id=station["id"] if station else None,
         )
     )
-    IdentityService(db, user).audit("local_session.opened", "users", user.id)
+    db.info["station"] = station
+    request.state.station = station
+    IdentityService(db, user).audit(
+        "local_session.opened", "users", user.id, {"station_id": station["id"]} if station else {}
+    )
     set_session_cookie(response, settings, token)
+    if station:
+        set_station_cookie(response, settings, request.cookies[STATION_COOKIE])
     return token, user
+
+
+def set_station_cookie(response: Response, settings, token: str):
+    response.set_cookie(
+        STATION_COOKIE,
+        token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="strict",
+        max_age=STATION_COOKIE_DAYS * 86400,
+        path="/api",
+    )
 
 
 @router.get("/auth/me")
@@ -82,22 +112,43 @@ def me(request: Request, response: Response, db: DB):
     except HTTPException as error:
         if not local:
             raise
+        station = None
         if not is_this_computer(request):
-            raise HTTPException(
-                401, "Este computador não tem acesso ao LocaControl desta loja."
-            ) from error
-        token, user = open_local_session(request, response, db)
+            peer = peer_address(request)
+            station = station_request(request) and request.app.state.stations.authenticate(
+                request.cookies.get(STATION_COOKIE), str(peer) if peer else None
+            )
+            if not station:
+                # Tells a computer of the store network that it can be paired (ADR-025).
+                pairable = from_store_network(request) and store_host(request)
+                raise HTTPException(
+                    401,
+                    NOT_PAIRED,
+                    headers={"X-LocaControl-Pairing": "available"} if pairable else None,
+                ) from error
+        token, user = open_local_session(request, response, db, station or None)
     view = user_view(user)
     if local:
         view["permissions"] = [
             p for p in view["permissions"] if p.split(".")[0] not in HIDDEN_PERMISSION_GROUPS
         ]
-    return {
+    settings = request.app.state.settings
+    station = getattr(request.state, "station", None)
+    result = {
         "user": view,
         "csrf_token": csrf_token(token),
         "edition": "local" if local else "standard",
+        # Identity of the database/store; travels with backups.
         "installation_id": installation(db)["id"],
     }
+    if local:
+        result |= {
+            # Identity of this server (outside the database) and of the calling station.
+            "server_id": request.app.state.stations.server()["id"],
+            "network": settings.network_mode,
+            "station": {"id": station["id"], "name": station["name"]} if station else None,
+        }
+    return result
 
 
 @router.post("/auth/logout", status_code=204)

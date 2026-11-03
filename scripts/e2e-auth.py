@@ -25,7 +25,20 @@ def free_port() -> int:
         return listener.getsockname()[1]
 
 
-def run_suite(env, folder, base_url, port, config_name, arguments, log_name):
+def own_address():
+    """Address another computer of the network would use; None when only loopback exists."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        try:
+            probe.connect(("10.255.255.255", 1))
+            address = probe.getsockname()[0]
+        except OSError:
+            return None
+    return None if address.startswith("127.") else address
+
+
+def run_suite(
+    env, folder, base_url, port, config_name, arguments, log_name, host="127.0.0.1"
+):
     """Start a server on the temporary database and run one Playwright configuration."""
     node = shutil.which("node")
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -37,7 +50,7 @@ def run_suite(env, folder, base_url, port, config_name, arguments, log_name):
                 "uvicorn",
                 "app.main:app",
                 "--host",
-                "127.0.0.1",
+                host,
                 "--port",
                 str(port),
             ],
@@ -188,8 +201,41 @@ def main():
         )
         if result.returncode:
             raise SystemExit(result.returncode)
+        # Network edition (ADR-025): the main computer and a station at another address.
+        address = own_address()
+        if address is None:
+            print("AVISO: sem endereço de rede não loopback; suíte de rede não executada.")
+        else:
+            network_url = f"sqlite:///{(Path(folder) / 'network.db').as_posix()}"
+            config.attributes["database_url"] = network_url
+            command.upgrade(config, "head")
+            network_port = free_port()
+            network_base = f"http://127.0.0.1:{network_port}"
+            network_env = {
+                **local_env,
+                "LOCACONTROL_NETWORK_MODE": "true",
+                "LOCACONTROL_STATION_NETWORKS": f'["{address}/32"]',
+                "LOCACONTROL_DATABASE_URL": network_url,
+                "LOCACONTROL_ALLOWED_ORIGINS": f'["{network_base}"]',
+                "LOCACONTROL_BACKUP_DIRECTORY": str(Path(folder) / "network-backups"),
+                "LOCACONTROL_DOCUMENT_DIRECTORY": str(Path(folder) / "network-documents"),
+                "E2E_NETWORK_BASE_URL": network_base,
+                "E2E_STATION_BASE_URL": f"http://{address}:{network_port}",
+            }
+            result = run_suite(
+                network_env,
+                folder,
+                network_base,
+                network_port,
+                "playwright.network.config.ts",
+                [],
+                "server-network.log",
+                host="0.0.0.0",
+            )
+            if result.returncode:
+                raise SystemExit(result.returncode)
     print(
-        "PASS: browser/API auth suite and local edition suite completed;"
+        "PASS: browser/API auth suite, local edition suite and network suite completed;"
         " temporary databases/servers removed"
     )
 

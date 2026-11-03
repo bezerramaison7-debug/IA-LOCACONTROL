@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.auth.models import Role, User
 from app.auth.security import hasher
 from app.contracts.models import AppSetting
+from app.network.stations import station_label
 
 INSTALLATION_KEY = "installation"
 LOCAL_OPERATOR = "operador.local"
@@ -43,8 +44,12 @@ def installation(db: Session) -> dict:
 
 
 def operator_label(db: Session) -> str:
-    # Names where the action came from, never a person.
-    return f"operador local · instalação {installation(db)['id'][:8]}"
+    # Names where the action came from, never a person: this computer or a paired station.
+    place = installation(db)["id"][:8]
+    station = db.info.get("station")
+    if station:
+        return f"operador local · {station_label(station)} · instalação {place}"
+    return f"operador local · instalação {place}"
 
 
 def local_operator(db: Session) -> User:
@@ -66,7 +71,7 @@ def local_operator(db: Session) -> User:
 def is_this_computer(request: Request) -> bool:
     """Automatic session only for a browser on this computer that addresses it as localhost.
 
-    Loopback peer: other machines on the network never qualify (pairing is a later PR).
+    Loopback peer: other machines on the network never qualify (they pair, ADR-025).
     Loopback Host: blocks DNS rebinding (a foreign name resolving to 127.0.0.1).
     App header: a cross-site page cannot send it without a CORS preflight, which is refused.
     """

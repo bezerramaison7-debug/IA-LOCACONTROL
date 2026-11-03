@@ -5,6 +5,11 @@ export type AuthContextValue = {
   user: AuthUser | null
   /** Local edition: no login screen, profile, logout, users or portal. */
   local?: boolean
+  /** Network edition (ADR-025): the paired station this browser is, or null on the main
+   * computer; `pairing` says this computer can be paired with a code. */
+  station?: { id: string; name: string } | null
+  network?: boolean
+  pairing?: boolean
   loading: boolean
   error: string
   refresh: () => Promise<void>
@@ -37,6 +42,7 @@ export function pathPermission(path: string) {
     '/faturamento': 'fiscal.read',
     '/fiscal': 'fiscal.read',
     '/backups': 'backups.manage',
+    '/estacoes': 'backups.manage',
   }
   if (masters[path]) return masters[path]
   if (path === '/portal' || path.startsWith('/portal/')) return 'portal.access'

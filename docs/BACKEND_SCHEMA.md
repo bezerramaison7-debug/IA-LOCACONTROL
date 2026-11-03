@@ -126,6 +126,9 @@ Interface `FiscalProvider` em `backend/app/fiscal/provider.py`; único adapter: 
 Relatórios não têm tabelas: `backend/app/reports/service.py` consulta as entidades acima e `export.py` gera Excel/PDF em memória. A migration 0007_reports só cria a permissão `reports.read`.
 Backup não tem tabela própria: configuração em `app_settings` (chave `backup`), conjuntos `.zip` na pasta configurada, lógica em `backend/app/ops/backup.py`. A migration 0010_backups só cria a permissão `backups.manage`. Desde a ADR-024 o histórico de execuções fica em `backup-history.json`, ao lado do banco (fora da base).
 
+## 6H. Estações da rede — P1-D (ADR-025)
+`auth_sessions.station_id` (String 36, índice; migration 0012_stations) liga a sessão à estação pareada; nulo = computador principal. A lista de estações, o código de pareamento e o histórico da rede ficam em `stations.json`, ao lado do banco, fora da base e dos backups (`backend/app/network/stations.py`).
+
 ## 6G. Rascunhos automáticos — EXISTENTE (P1-C, ADR-024)
 | Model / tabela | Campos | Restrições |
 | --- | --- | --- |
@@ -174,6 +177,7 @@ Prefixos: /api para comercial; /api/imports para importação.
 | Fiscal — leitura | GET /api/fiscal/provider; GET /api/fiscal/documents (status, customer_id, contract_id, offset, limit); GET /api/fiscal/documents/{id}; GET /api/fiscal/documents/{id}/pdf e /xml | fiscal.read |
 | Fiscal — escrita | POST /api/fiscal/documents; POST /api/fiscal/documents/{id}/emit, /refresh, /cancel | fiscal.write |
 | Backup | GET /api/backups; GET /api/backups/status; PUT /api/backups/config; POST /api/backups; POST /api/backups/import; POST /api/backups/{name}/verify; GET /api/backups/{name}/download; POST /api/backups/{name}/restore | backups.manage |
+| Estações (rede local) | POST /api/stations/pair (sem sessão: rede da loja + código); GET /api/stations; POST e DELETE /api/stations/pairing; POST /api/stations/{id}/revoke; GET /api/stations/{id}/activity | edição local; tudo exceto `pair` só no computador principal |
 | Rascunhos | GET /api/drafts; GET, PUT e DELETE /api/drafts/{kind}/{scope} | sessão; permissão da operação definitiva (quotes.write, contracts.write ou operations.write) |
 
 Chaves de relatório: active_rentals, due_soon, overdue, rented_products, available_products, equipment_by_customer, equipment_history, renewals, returns, contracted_revenue, top_products, top_customers.
@@ -204,7 +208,7 @@ Para cada novo caso de uso registrar: requisito PRD, entradas/schema, ator/permi
 ## 11. Concorrência e migrations
 Version nas edições; request_key no movimento; source_key na origem; BEGIN IMMEDIATE nas operações SQLite pertinentes.
 Novos números e operações comerciais precisam de constraints + serviço + testes concorrentes.
-Cadeia existente: 0001_foundation → 0002_identity → 0003_masters → 0004_imports → 0005_quotes → 0006_contracts → 0007_reports → 0008_portal → 0009_fiscal → 0010_backups → 0011_drafts.
+Cadeia existente: 0001_foundation → 0002_identity → 0003_masters → 0004_imports → 0005_quotes → 0006_contracts → 0007_reports → 0008_portal → 0009_fiscal → 0010_backups → 0011_drafts → 0012_stations.
 Todas aplicadas ao banco local em 11/10 após cópias prévias; ver DATABASE.
 Numeração de contrato e de renovação, retirada concorrente do mesmo saldo e criação concorrente têm testes em `test_contracts.py` e `test_operations.py`.
 Comandos existentes: scripts/migrate.ps1; -Action current; -Action check. Aplicar migration exige plano/backup.
