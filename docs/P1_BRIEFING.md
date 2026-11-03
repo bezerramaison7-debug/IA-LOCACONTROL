@@ -33,7 +33,7 @@ Monólito modular existente (frontend compilado + FastAPI + SQLite). Uma instala
 | P1-B Base de instalação (programa × dados, `LOCACONTROL_DATA_DIR`, ponto de entrada `app.server`, instância única, prova PyInstaller) | Implementado; instalador e teste em Windows limpo seguem pendentes (P1-E) | branch `p1/b-instalacao`, `docs/INSTALLATION.md` 6.1 |
 | P1 Instalador único | Pendente | — |
 | P1-C Proteção automática (backup 20/60 min, histórico e aviso, segunda cópia, importação e restauração de outro disco, rascunhos, sessão local preservada; limites de espaço e verificação após gravação) | Implementado com as correções A3 e M2 da auditoria; validado no Linux da nuvem; homologação Windows pendente (seção abaixo) | branch `p1/c-protecao`, ADR-024 |
-| P1-D Rede local e pareamento (modo rede, código temporário, credencial por estação, revogação, só-principal, três identidades, restauração sem efeito nos pareamentos, concorrência com servidor real) | Implementado; validado no Linux da nuvem com servidor real e duas estações; falta validar no Windows (seção abaixo) | branch `p1/d-rede`, ADR-025 |
+| P1-D Rede local e pareamento (modo rede, código temporário, credencial por estação com rotação e detecção de reuso, revogação, só-principal incluindo importação do Excel, três identidades, lista de estações resiliente, auditoria por `station_id`, restauração sem efeito nos pareamentos, concorrência com servidor real) | Implementado com as correções A1, A2, M4 e M5 da auditoria; validado no Linux da nuvem; homologação Windows pendente (seção abaixo) | branch `p1/d-rede`, ADR-025 |
 | P1 Importação Excel (continuidade) | Pendente; histórico depende do Excel real | — |
 
 ## Requisitos do P1 (resumo fiel do briefing)
@@ -68,6 +68,8 @@ Um PR por tema (validação, integridade, sem login, empacotamento, proteção a
 - Rascunhos: fechar o navegador e reiniciar o Windows no meio de um orçamento e de uma retirada; recuperar.
 
 ## P1-D — o que falta validar no Windows
+- Rotação do acesso das estações em uso real por horas (sem revogação indevida), cópia de cookies entre dois PCs (deve revogar), alerta no principal.
+- `stations.json` com `fsync` no NTFS; queda de energia durante a gravação.
 - Duas estações Windows reais na mesma rede, pelo navegador, com o principal empacotado em modo rede; regra de firewall do Windows limitada à rede local (P1-E).
 - Nome do computador principal (`http://NOME-DO-PC:8000`) além do IP; IPv6 link-local.
 - Queda do principal com estações abertas (formulário preservado, rascunho, volta).

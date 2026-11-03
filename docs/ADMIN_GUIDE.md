@@ -130,6 +130,12 @@ Na edição local com **modo rede** (`LOCACONTROL_NETWORK_MODE=true`, escolhido 
 
 **Revogar**: em **Estações da rede**, **Revogar** na estação desejada e confirme. O acesso termina na hora; o computador volta à tela de pareamento. A lista mostra quando cada estação foi pareada, o último acesso e o endereço; o **Histórico da rede** mostra pareamentos, tentativas recusadas e revogações. Na **Auditoria**, as ações de uma estação aparecem como `operador local · estação <nome> (<código>) · instalação <código>`.
 
+**Reuso de credencial**: o acesso de cada estação é trocado sozinho a cada 15 minutos de uso e a cada vez que ela abre o sistema. Se o mesmo acesso for usado por dois computadores (uma cópia), o sistema revoga a estação, mostra o aviso "Credencial da estação … usada por mais de um computador" em **Estações da rede** e na **Visão geral**, com o endereço que denunciou a cópia. Verifique os computadores da loja e pareie de novo a estação legítima. Isso detecta e corta a cópia; não impede que ela seja usada até a troca seguinte.
+
+**Lista de estações ilegível**: se o arquivo `stations.json` estragar, o sistema usa a cópia `stations.json.bak` e avisa. Se as duas estragarem, este computador continua funcionando normalmente, mas todas as estações ficam bloqueadas e aparece o reparo em **Estações da rede**: recoloque o `stations.json` de uma cópia da pasta de dados e reinicie, ou digite `RECOMEÇAR ESTAÇÕES` para começar uma lista nova (os arquivos atuais ficam guardados e todas as estações precisam ser pareadas de novo).
+
+**Importação do Excel**: enviar, conferir e confirmar planilhas só neste computador principal; as estações consultam as importações.
+
 **Identificação**: a página mostra três códigos diferentes — a **base de dados da loja** (vai junto com os backups), **este servidor** (o computador principal) e cada **estação**.
 
 **Restauração de backup e estações**: a lista de estações não faz parte do backup. Restaurar um backup antigo não reativa uma estação revogada nem desconecta as pareadas depois dele (elas só abrem uma sessão nova sozinhas). Se o computador principal for reinstalado do zero, pareie as estações de novo.
