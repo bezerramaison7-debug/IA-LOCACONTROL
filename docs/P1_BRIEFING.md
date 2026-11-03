@@ -78,6 +78,7 @@ Um PR por tema (validação, integridade, sem login, empacotamento, proteção a
 - Desempenho com várias estações gravando ao mesmo tempo no SQLite do principal.
 
 ## P1-E — o que falta validar em computador físico
+Roteiro em checklist, com itens bloqueantes e critérios de aprovação: `docs/HOMOLOGACAO_WINDOWS.md`.
 A CI Windows (Windows Server 2022 descartável, um único computador fazendo papel de principal e de "estação") comprova: compilação do instalador, instalação silenciosa, regra de firewall criada/removida, CA criada, HTTPS recusado antes da confiança e aceito depois, código errado sem instalar nada, atualização preservando `.env` e dados, desinstalação preservando o banco, Name Constraints aplicadas pelo CryptoAPI. Falta, em máquinas reais:
 - Windows 10 e 11 de usuário (não Server), com UAC, SmartScreen (instalador sem assinatura de código) e antivírus.
 - Assistente gráfico do instalador (páginas, mensagens, dupla confirmação da exclusão dos dados) — a CI só usa o modo silencioso.
