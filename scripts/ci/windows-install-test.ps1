@@ -1,6 +1,12 @@
 ﻿# CI (Windows): instala, usa, conecta uma "estação", atualiza e desinstala o LocaControl em modo
 # silencioso, conferindo cada passo. Máquina da CI, não homologação: ver docs/P1E_PROPOSTA.md.
-param([Parameter(Mandatory)][string]$Setup, [Parameter(Mandatory)][string]$Upgrade)
+param(
+    [Parameter(Mandatory)][string]$Setup,
+    [Parameter(Mandatory)][string]$Upgrade,
+    # SEC-P1E-01: 'relatar' só registra o que uma conta não administradora consegue fazer;
+    # 'exigir' falha se ela conseguir ler ou alterar qualquer arquivo protegido.
+    [ValidateSet('relatar', 'exigir')][string]$Isolation = 'exigir'
+)
 $ErrorActionPreference = 'Stop'
 $App = Join-Path $env:ProgramFiles 'LocaControl'
 $Data = Join-Path $env:ProgramData 'LocaControl'
@@ -32,6 +38,49 @@ function Session {
 }
 function Rule-Exists { (netsh advfirewall firewall show rule name="$Rule") -match 'LocalSubnet' }
 
+# Conta local comum (sem administrador) usada pela sonda de isolamento (SEC-P1E-01).
+$ProbeUser = 'lc-sonda'
+$ProbePassword = 'Sd-' + [guid]::NewGuid().ToString('N').Substring(0, 20) + '!a1'
+$ProbeDir = 'C:\ci-sonda'
+function Invoke-NonAdminProbe([string]$Label) {
+    if (-not (Get-LocalUser -Name $ProbeUser -ErrorAction SilentlyContinue)) {
+        New-LocalUser -Name $ProbeUser -Password (ConvertTo-SecureString $ProbePassword -AsPlainText -Force) -AccountNeverExpires -PasswordNeverExpires | Out-Null
+        Add-LocalGroupMember -Group (Get-LocalGroup -SID 'S-1-5-32-545') -Member $ProbeUser -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path $ProbeDir | Out-Null
+        icacls $ProbeDir /grant '*S-1-1-0:(OI)(CI)M' | Out-Null
+        Copy-Item (Join-Path $PSScriptRoot 'non-admin-probe.ps1') $ProbeDir
+    }
+    $out = Join-Path $ProbeDir "$Label.json"
+    Remove-Item $out -ErrorAction SilentlyContinue
+    $pwsh = (Get-Command pwsh).Source
+    $arguments = @('-NoProfile', '-NonInteractive', '-File', (Join-Path $ProbeDir 'non-admin-probe.ps1'), '-Data', $Data, '-Out', $out)
+    $credential = [pscredential]::new(".\$ProbeUser", (ConvertTo-SecureString $ProbePassword -AsPlainText -Force))
+    try {
+        Start-Process $pwsh -Credential $credential -ArgumentList $arguments -WorkingDirectory $ProbeDir -WindowStyle Hidden -Wait | Out-Null
+    } catch { Write-Host "Start-Process com outra conta falhou ($($_.Exception.Message)); usando tarefa agendada." }
+    if (-not (Test-Path $out)) {
+        $quoted = ($arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
+        $action = New-ScheduledTaskAction -Execute $pwsh -Argument $quoted -WorkingDirectory $ProbeDir
+        Register-ScheduledTask -TaskName 'LocaControlSonda' -Action $action -User $ProbeUser -Password $ProbePassword -RunLevel Limited -Force | Out-Null
+        Start-ScheduledTask -TaskName 'LocaControlSonda'
+        for ($i = 0; $i -lt 60 -and -not (Test-Path $out); $i++) { Start-Sleep -Seconds 1 }
+        Unregister-ScheduledTask -TaskName 'LocaControlSonda' -Confirm:$false
+    }
+    Assert (Test-Path $out) "sonda executada como conta comum ($Label)"
+    $result = Get-Content $out -Raw | ConvertFrom-Json
+    Write-Host "Sonda ($Label): $($result | ConvertTo-Json -Compress)"
+    Assert (-not $result.administrador) "a sonda rodou sem privilégio de administrador ($($result.conta))"
+    $exposed = @('le_banco', 'altera_banco', 'le_env', 'altera_env', 'altera_estacoes', 'le_chave_ca', 'le_senha_protegida', 'cria_arquivo', 'decifra_senha', 'abre_chave_ca') |
+        Where-Object { $result.$_ }
+    if ($Isolation -eq 'relatar') {
+        if ($exposed) { Write-Host "REPRODUZIDO (SEC-P1E-01): conta comum consegue: $($exposed -join ', ')" }
+        else { Write-Host 'Conta comum sem acesso aos arquivos protegidos.' }
+    } else {
+        Assert (-not $exposed) "conta comum sem acesso a banco, .env, estações e chaves ($Label)$(if ($exposed) { ': ' + ($exposed -join ', ') })"
+    }
+    return $result
+}
+
 try {
     # 1. Instalação como computador principal com a rede da loja.
     Assert ((Install $Setup @('/MODO=principal', '/REDE=1') 'instalacao.log') -eq 0) 'instalador terminou com código 0'
@@ -46,6 +95,7 @@ try {
     Start-Process $Exe -ArgumentList 'servir'
     Assert (Wait-Health) 'servidor respondeu em http://127.0.0.1:8000'
     Assert (Test-Path (Join-Path $Data 'tls\ca.pem')) 'autoridade certificadora local criada'
+    Invoke-NonAdminProbe 'instalacao' | Out-Null
     $s = Session
     $body = @{ person_type = 'PF'; legal_name = 'Cliente CI'; document = '52998224725'; addresses = @(@{ street = 'Rua Um'; city = 'São Paulo'; state = 'SP'; postal_code = '01001000' }) } | ConvertTo-Json -Depth 4
     Invoke-RestMethod 'http://127.0.0.1:8000/api/customers' -Method Post -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' -Headers $s.Headers -WebSession $s.Web | Out-Null
@@ -96,6 +146,8 @@ try {
     Write-Host 'PASS: instalação, uso, conexão de estação, atualização e desinstalação no Windows da CI.'
 } finally {
     Copy-Item (Join-Path $Data 'logs\*') $Logs -ErrorAction SilentlyContinue
+    Copy-Item (Join-Path $ProbeDir '*.json') $Logs -ErrorAction SilentlyContinue
+    Remove-LocalUser -Name $ProbeUser -ErrorAction SilentlyContinue
 }
 # Chegou aqui = todas as conferências passaram; o último netsh (regra já removida) devolve 1.
 exit 0

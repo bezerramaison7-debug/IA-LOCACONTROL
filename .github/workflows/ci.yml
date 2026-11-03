@@ -141,6 +141,7 @@ jobs:
           .\scripts\ci\windows-install-test.ps1
           -Setup dist-installer\LocaControl-Setup-0.1.0.exe
           -Upgrade dist-installer\LocaControl-Setup-0.1.1.exe
+          -Isolation relatar
       - name: Registros da instalação
         if: always()
         uses: actions/upload-artifact@v4
