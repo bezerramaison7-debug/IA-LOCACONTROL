@@ -8,6 +8,7 @@ database; an unavailable data folder or a vanished database exits with EXIT_DATA
 """
 
 import argparse
+import json
 import os
 import sqlite3
 import sys
@@ -24,6 +25,10 @@ from app.persistence.database import build_engine, resolve_database_url
 
 EXIT_ALREADY_RUNNING = 3
 EXIT_DATA_UNAVAILABLE = 4
+# Not enough room for the copy taken before a schema upgrade: nothing was migrated (P1-E).
+EXIT_NO_SPACE = 5
+# Copies taken before schema upgrades kept per folder; older ones are removed after a new one.
+PRE_UPGRADE_KEPT = 3
 LOCK_FILE = "locacontrol.lock"
 # Written after the first successful preparation: from then on a missing database is an error.
 MARKER = "locacontrol.installed"
@@ -34,6 +39,10 @@ class AlreadyRunning(RuntimeError):
 
 
 class DataUnavailable(RuntimeError):
+    pass
+
+
+class NoSpace(RuntimeError):
     pass
 
 
@@ -119,6 +128,49 @@ def copy_database(source: Path, directory: Path) -> Path:
     return target
 
 
+def saved_limits(database: Path) -> dict:
+    """Backup limits saved in the database itself, read without the ORM (old schemas too)."""
+    try:
+        connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+        try:
+            row = connection.execute(
+                "SELECT value FROM app_settings WHERE key = 'backup'"
+            ).fetchone()
+        finally:
+            connection.close()
+        return json.loads(row[0]) if row else {}
+    except (sqlite3.Error, ValueError, TypeError):
+        return {}
+
+
+def copy_folder(settings: Settings, database: Path) -> Path:
+    """Where the pre-upgrade copy fits keeping the free-space reserve: the backup folder, else
+    the data folder. Neither: NoSpace, and the upgrade does not run (the database is untouched)."""
+    from app.ops.backup import BackupManager
+    from app.ops.storage import reserve_bytes
+
+    size = database.stat().st_size
+    limits = saved_limits(database)
+    for folder in (Path(settings.backup_directory), database.parent):
+        anchor = next((p for p in (folder, *folder.parents) if p.exists()), None)
+        if anchor is None:
+            continue
+        usage = BackupManager.disk_usage(anchor)
+        if usage.free - size >= reserve_bytes(usage.total, limits, size):
+            return folder
+    raise NoSpace(
+        "Espaço insuficiente para a cópia de segurança do banco antes da atualização "
+        f"(o banco tem {size / 1024**2:.0f} MB e o disco precisa manter o espaço mínimo livre). "
+        "Nada foi alterado: libere espaço no disco e inicie o LocaControl de novo."
+    )
+
+
+def prune_pre_upgrade(folder: Path, keep: int = PRE_UPGRADE_KEPT):
+    copies = sorted(folder.glob("pre-upgrade-*.db"), key=lambda p: p.name, reverse=True)
+    for old in copies[keep:]:
+        old.unlink(missing_ok=True)
+
+
 def migrate(settings: Settings) -> Path | None:
     """Upgrades to head; an existing database is copied first. Returns the copy, if any."""
     config = Config(str(resource("backend/alembic.ini")))
@@ -135,7 +187,9 @@ def migrate(settings: Settings) -> Path | None:
     copy = None
     database = database_file(settings)
     if database and database.is_file() and database.stat().st_size:
-        copy = copy_database(database, Path(settings.backup_directory))
+        folder = copy_folder(settings, database)
+        copy = copy_database(database, folder)
+        prune_pre_upgrade(folder)
         print(f"Cópia do banco antes da atualização: {copy}", flush=True)
     print("Aplicando atualizações do banco de dados...", flush=True)
     command.upgrade(config, "head")
@@ -189,7 +243,11 @@ def main(argv: list[str] | None = None) -> int:
         except DataUnavailable as error:
             print(error, file=sys.stderr, flush=True)
             return EXIT_DATA_UNAVAILABLE
-        prepare(settings)
+        try:
+            prepare(settings)
+        except NoSpace as error:
+            print(error, file=sys.stderr, flush=True)
+            return EXIT_NO_SPACE
         (root / MARKER).touch()
         if args.prepare:
             return 0

@@ -168,7 +168,8 @@ def store():
             "mirror_directory": "",
             "max_total_gb": 10,
             "min_free_gb": 1,
-            "min_free_percent": 0,
+            "margin_percent": 0,
+            "margin_max_gb": 0,
         },
     )
     assert status == 200, body

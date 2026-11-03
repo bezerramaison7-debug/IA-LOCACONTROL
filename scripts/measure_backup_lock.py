@@ -29,7 +29,8 @@ RELAXED = {
     "mirror_directory": "",
     "max_total_gb": 100,
     "min_free_gb": 1,
-    "min_free_percent": 0,
+    "margin_percent": 0,
+    "margin_max_gb": 0,
 }
 
 

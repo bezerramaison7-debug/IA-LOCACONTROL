@@ -50,7 +50,8 @@ function ConfigForm({
   const [limits, setLimits] = useState({
     max_total_gb: String(data.config.max_total_gb),
     min_free_gb: String(data.config.min_free_gb),
-    min_free_percent: String(data.config.min_free_percent),
+    margin_percent: String(data.config.margin_percent),
+    margin_max_gb: String(data.config.margin_max_gb),
   })
   const [errors, setErrors] = useState<{
     time?: string
@@ -59,7 +60,8 @@ function ConfigForm({
     mirror?: string
     max_total_gb?: string
     min_free_gb?: string
-    min_free_percent?: string
+    margin_percent?: string
+    margin_max_gb?: string
   }>({})
   const [failure, setFailure] = useState('')
   const [saving, setSaving] = useState(false)
@@ -90,11 +92,13 @@ function ConfigForm({
           min_free_gb: /^\d{1,6}$/.test(limits.min_free_gb.trim())
             ? undefined
             : 'Informe quantos GB manter livres (0 ou mais).',
-          min_free_percent:
-            /^\d{1,2}$/.test(limits.min_free_percent.trim()) &&
-            Number(limits.min_free_percent) <= 90
+          margin_percent:
+            /^\d{1,2}$/.test(limits.margin_percent.trim()) && Number(limits.margin_percent) <= 50
               ? undefined
-              : 'Informe de 0 a 90%.',
+              : 'Informe de 0 a 50%.',
+          margin_max_gb: /^\d{1,6}$/.test(limits.margin_max_gb.trim())
+            ? undefined
+            : 'Informe a margem máxima em GB (0 ou mais).',
           mirror: absolutePath(config.mirror_directory)
             ? undefined
             : 'Informe o caminho completo da pasta, por exemplo E:\\Copia\\LocaControl.',
@@ -110,7 +114,8 @@ function ConfigForm({
           mirror_directory: config.mirror_directory.trim(),
           max_total_gb: Number(limits.max_total_gb),
           min_free_gb: Number(limits.min_free_gb),
-          min_free_percent: Number(limits.min_free_percent),
+          margin_percent: Number(limits.margin_percent),
+          margin_max_gb: Number(limits.margin_max_gb),
         })
           .then(onSaved)
           .catch((e) => setFailure(failureMessage(e, 'Não foi possível salvar a configuração.')))
@@ -199,17 +204,26 @@ function ConfigForm({
           maxLength={6}
           value={limits.min_free_gb}
           error={errors.min_free_gb}
-          hint="O backup não é feito se o disco ficaria com menos que isso."
+          hint="Mínimo livre no disco depois do backup (padrão 10 GB), somado à margem operacional."
           onChange={(e) => setLimits({ ...limits, min_free_gb: e.target.value })}
         />
         <Field
-          label="Manter livres no disco (%)"
+          label="Margem operacional (%)"
           inputMode="numeric"
           maxLength={2}
-          value={limits.min_free_percent}
-          error={errors.min_free_percent}
-          hint="Vale o maior dos dois: em GB ou em porcentagem do disco."
-          onChange={(e) => setLimits({ ...limits, min_free_percent: e.target.value })}
+          value={limits.margin_percent}
+          error={errors.margin_percent}
+          hint="Além do mínimo em GB, esta porcentagem do disco fica livre, até a margem máxima — e nunca menos que duas vezes o tamanho do banco."
+          onChange={(e) => setLimits({ ...limits, margin_percent: e.target.value })}
+        />
+        <Field
+          label="Margem máxima (GB)"
+          inputMode="numeric"
+          maxLength={6}
+          value={limits.margin_max_gb}
+          error={errors.margin_max_gb}
+          hint="Limita a margem em discos grandes (padrão 20 GB)."
+          onChange={(e) => setLimits({ ...limits, margin_max_gb: e.target.value })}
         />
       </div>
       <Failure message={failure} />
