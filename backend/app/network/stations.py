@@ -14,6 +14,7 @@ import hmac
 import ipaddress
 import json
 import logging
+import os
 import secrets
 import socket
 import threading
@@ -22,6 +23,8 @@ import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, Request
+
+from app.core.durable import write_durably
 
 logger = logging.getLogger(__name__)
 
@@ -125,38 +128,126 @@ def principal_only(request: Request):
         raise HTTPException(403, PRINCIPAL_ONLY)
 
 
+UNAVAILABLE = (
+    "A lista de estações está ilegível: as estações estão bloqueadas até o reparo no computador "
+    "principal (Gestão → Estações da rede). Os dados da loja não foram afetados."
+)
+RESET_PHRASE = "RECOMEÇAR ESTAÇÕES"
+
+
+class RegistryUnavailable(HTTPException):
+    def __init__(self):
+        super().__init__(503, UNAVAILABLE)
+
+
+def readable(raw: bytes) -> dict | None:
+    """A registry file that parses and has the expected shape, or None."""
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("stations", []), list):
+        return None
+    if any(
+        not isinstance(s, dict) or "id" not in s or "token_hash" not in s
+        for s in data.get("stations", [])
+    ):
+        return None
+    return data
+
+
 class StationRegistry:
+    """Durable (fsync) and resilient (A2): the main file plus `.bak`, written after it.
+
+    An unreadable main file falls back to the copy (and is kept aside for analysis). With both
+    unreadable the registry is *unavailable*: stations are refused, the main computer keeps
+    working, and only an explicit, audited reset on the main computer starts a new list. It
+    never starts empty on its own, which would silently undo revocations.
+    """
+
     def __init__(self, path: Path):
         self.path = Path(path)
+        self.backup = self.path.with_name(self.path.name + ".bak")
         self.lock = threading.RLock()
         self._cache: dict | None = None
+        self.unavailable = False
+        self.recovered = False
 
     # ---- storage -------------------------------------------------------------------
+
+    def _read(self, path: Path) -> tuple[bool, dict | None]:
+        """(exists, data); data is None when the file exists but is unreadable."""
+        try:
+            return True, readable(path.read_bytes())
+        except FileNotFoundError:
+            return False, None
+        except OSError:
+            return True, None
+
+    def _set_aside(self, path: Path):
+        if path.exists():
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            os.replace(path, path.with_name(f"{path.name}.corrompido-{stamp}"))
 
     def _load(self) -> dict:
         if self._cache is not None:
             return self._cache
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            data = {}
-        except (OSError, ValueError) as error:
-            # Never start empty over an unreadable registry: that would drop revocations.
-            raise HTTPException(503, "Lista de estações ilegível; nada foi alterado.") from error
+        if self.unavailable:
+            raise RegistryUnavailable()
+        exists, data = self._read(self.path)
+        if data is None:
+            backup_exists, backup = self._read(self.backup)
+            if backup is not None:
+                logger.error("stations.json ilegível ou ausente; usando a cópia %s", self.backup)
+                self._set_aside(self.path)
+                self.recovered = True
+                data = backup
+            elif exists or backup_exists:
+                # Never start empty over an unreadable registry: that would drop revocations.
+                logger.error("Lista de estações ilegível; estações bloqueadas até o reparo.")
+                self.unavailable = True
+                raise RegistryUnavailable()
+            else:
+                data = {}  # first run
         data.setdefault("server", {"id": str(uuid.uuid4()), "created_at": int(time.time())})
         data.setdefault("stations", [])
         data.setdefault("pairing", None)
         data.setdefault("failures", {})
         data.setdefault("events", [])
         self._cache = data
+        if self.recovered:
+            self._event(data, "registry.recovered_from_backup")
+            self._save(data)
         return data
 
     def _save(self, data: dict):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        part = self.path.with_name(f".{self.path.name}.part")
-        part.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        part.replace(self.path)
+        raw = json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8")
+        # Main file first, then the copy: after a crash between the two, the main file (fsync'd
+        # and renamed atomically) is the newer one and stays readable.
+        write_durably(self.path, raw)
+        write_durably(self.backup, raw)
         self._cache = data
+
+    def state(self) -> dict:
+        """For the main computer's screen: whether the list is readable and what happened."""
+        try:
+            self._load()
+        except RegistryUnavailable:
+            pass
+        return {"unavailable": self.unavailable, "recovered_from_backup": self.recovered}
+
+    def reset(self) -> dict:
+        """Explicit repair from the main computer: the unreadable files are kept aside and a new,
+        empty list starts. Every station must be paired again."""
+        with self.lock:
+            self._set_aside(self.path)
+            self._set_aside(self.backup)
+            self._cache, self.unavailable, self.recovered = None, False, False
+            data = self._load()
+            self._event(data, "registry.reset")
+            self._save(data)
+            return data["server"]
 
     def _event(self, data: dict, action: str, station: dict | None = None, **extra):
         entry = {"at": int(time.time()), "action": action, **extra}
@@ -166,9 +257,14 @@ class StationRegistry:
 
     # ---- identity ------------------------------------------------------------------
 
-    def server(self) -> dict:
+    def server(self) -> dict | None:
+        """This server's identity; None while the list is unavailable (the main computer keeps
+        working without it)."""
         with self.lock:
-            data = self._load()
+            try:
+                data = self._load()
+            except RegistryUnavailable:
+                return None
             if not self.path.exists():
                 self._save(data)
             return data["server"]
@@ -281,7 +377,10 @@ class StationRegistry:
             return None
         hashed = digest(token)
         with self.lock:
-            data = self._load()
+            try:
+                data = self._load()
+            except RegistryUnavailable:
+                return None  # fail closed: no station is accepted while the list is unreadable
             for station in data["stations"]:
                 if hmac.compare_digest(station["token_hash"], hashed):
                     if station["revoked_at"]:

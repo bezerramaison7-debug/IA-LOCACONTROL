@@ -144,7 +144,8 @@ def me(request: Request, response: Response, db: DB):
     if local:
         result |= {
             # Identity of this server (outside the database) and of the calling station.
-            "server_id": request.app.state.stations.server()["id"],
+            # None while the station list is unreadable: the main computer keeps working (A2).
+            "server_id": (request.app.state.stations.server() or {}).get("id"),
             "network": settings.network_mode,
             "station": {"id": station["id"], "name": station["name"]} if station else None,
         }

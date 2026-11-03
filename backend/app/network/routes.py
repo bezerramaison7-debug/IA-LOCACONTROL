@@ -19,6 +19,7 @@ from app.auth.service import IdentityService
 from app.masters.schemas import Input
 from app.network.stations import (
     NOT_PAIRED,
+    RESET_PHRASE,
     peer_address,
     principal_only,
     station_label,
@@ -74,15 +75,45 @@ def pair(payload: PairInput, request: Request, response: Response, db: DB):
 @router.get("", dependencies=[Depends(local_only)])
 def overview(request: Request, db: DB, user: CurrentUser, _: Principal):
     registry = request.app.state.stations
-    return {
+    state = registry.state()
+    result = {
         # Three identities: the database/store, this server and each station.
         "installation_id": installation(db)["id"],
         "server": registry.server(),
         "network": request.app.state.settings.network_mode,
-        "pairing": registry.pairing(),
-        "stations": registry.listing(),
-        "events": registry.events(limit=30),
+        "registry": state,
+        "pairing": None,
+        "stations": [],
+        "events": [],
     }
+    if not state["unavailable"]:
+        result |= {
+            "pairing": registry.pairing(),
+            "stations": registry.listing(),
+            "events": registry.events(limit=30),
+        }
+    return result
+
+
+class ResetInput(Input):
+    # Must be exactly RESET_PHRASE: every station will have to be paired again.
+    confirmation: str = Field(max_length=40)
+
+
+@router.post("/registry/reset", dependencies=[Depends(local_only)])
+def reset_registry(payload: ResetInput, request: Request, db: DB, user: CurrentUser, _: Principal):
+    """Repair of an unreadable station list (A2): files kept aside, a new list starts."""
+    if payload.confirmation != RESET_PHRASE:
+        raise HTTPException(422, f'Digite exatamente "{RESET_PHRASE}" para confirmar.')
+    registry = request.app.state.stations
+    before = registry.state()
+    server = registry.reset()
+    # No previous station keeps a session: all of them pair again.
+    db.execute(delete(AuthSession).where(AuthSession.station_id.is_not(None)))
+    IdentityService(db, user).audit(
+        "station.registry_reset", "stations", None, {"before": before, "server_id": server["id"]}
+    )
+    return {"server": server, "registry": registry.state()}
 
 
 @router.post("/pairing", status_code=201, dependencies=[Depends(local_only), Depends(network_on)])
