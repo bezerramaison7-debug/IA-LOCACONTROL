@@ -18,6 +18,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { canOpen, useAuth } from '../auth/context'
+import { getBackupStatus } from '../lib/backups'
 import { eventKinds } from '../lib/contracts'
 import { getDashboard, type Dashboard as DashboardData } from '../lib/reports'
 import { brDateTime, brMoney, brQuantity } from '../lib/quotes'
@@ -239,6 +240,31 @@ function Panel({ data }: { data: DashboardData }) {
   )
 }
 
+/** Visible only to who manages backups, and only when there is something to do. */
+function BackupAlert() {
+  const { request } = useAuth()
+  const status = useQuery({
+    queryKey: ['backups', 'status'],
+    queryFn: () => getBackupStatus(request),
+    retry: false,
+    refetchInterval: 5 * 60_000,
+  })
+  const alert = status.data?.alert
+  if (!alert) return null
+  return (
+    <div
+      className={'quote-notice' + (alert.level === 'danger' ? ' quote-notice-danger' : '')}
+      role="alert"
+      aria-label="Aviso de backup"
+    >
+      <strong>
+        <TriangleAlert size={16} aria-hidden="true" /> {alert.message}
+      </strong>
+      <Link to="/backups">Abrir Backups</Link>
+    </div>
+  )
+}
+
 export function Dashboard() {
   const { user, request } = useAuth()
   const has = (code: string) => !!user?.permissions.includes(code)
@@ -270,6 +296,7 @@ export function Dashboard() {
           )
         }
       />
+      {has('backups.manage') && <BackupAlert />}
       {has('imports.write') && (
         <Card title="Comece pelo seu Excel">
           <div className="import-body">

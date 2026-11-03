@@ -2113,3 +2113,15 @@ dd {
 .quote-notice + .field-hint {
   margin-top: 10px;
 }
+.draft-offer {
+  margin-bottom: 4px;
+}
+.draft-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.draft-status-error {
+  color: var(--danger);
+}

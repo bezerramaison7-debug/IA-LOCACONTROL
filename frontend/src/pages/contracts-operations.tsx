@@ -35,6 +35,8 @@ import {
   type QuotePeriod,
 } from '../lib/quotes'
 import { Button } from '../components/Button'
+import { DraftNotice } from '../components/DraftNotice'
+import { useDraft, type DraftControl } from '../lib/drafts'
 import { Modal } from '../components/Modal'
 import { Card, ErrorState, Field, PageHeader, Select, Skeleton } from '../components/ui'
 import { useToast } from '../components/toast-context'
@@ -162,7 +164,7 @@ function Review({
 }
 
 /** One request at a time: the ref blocks a second click before React re-renders. */
-function useSubmit(onDone: FormProps['onDone']) {
+function useSubmit(onDone: FormProps['onDone'], draft: DraftControl) {
   const sending = useRef(false)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<ActionError | null>(null)
@@ -173,6 +175,8 @@ function useSubmit(onDone: FormProps['onDone']) {
     setFailure(null)
     try {
       const result = await task()
+      // The operation is recorded: its draft is no longer needed.
+      draft.finish()
       onDone(result, done(result))
     } catch (e) {
       setFailure(actionError(e, 'Não foi possível registrar a operação.'))
@@ -199,7 +203,7 @@ function WithdrawalForm({ contract, onDone, onCancel, onReload }: FormProps) {
   const { request } = useAuth()
   const can = useContractPermissions()
   const items = contract.items.filter((item) => positive(item.to_withdraw))
-  const [key] = useState(() => crypto.randomUUID())
+  const [key, setKey] = useState(() => crypto.randomUUID())
   const [date, setDate] = useState(localDate)
   const [notes, setNotes] = useState('')
   const [quantities, setQuantities] = useState<Record<number, string>>(() =>
@@ -208,7 +212,26 @@ function WithdrawalForm({ contract, onDone, onCancel, onReload }: FormProps) {
   const [chosen, setChosen] = useState<Record<number, number[]>>({})
   const [errors, setErrors] = useState<Errors>({})
   const [review, setReview] = useState<string[] | null>(null)
-  const { busy, failure, submit, clear } = useSubmit(onDone)
+  // The draft keeps the operation key: sending a recovered draft again is recognised by the
+  // server as the same withdrawal, never recorded twice.
+  const draft = useDraft({
+    kind: 'withdrawal',
+    scope: String(contract.id),
+    value: { key, date, notes, quantities, chosen },
+    baseVersion: contract.version,
+    onRestore: (saved) => {
+      const known = (id: string) => items.some((item) => String(item.id) === id)
+      setKey(saved.key)
+      setDate(saved.date)
+      setNotes(saved.notes)
+      setQuantities((current) => ({
+        ...current,
+        ...Object.fromEntries(Object.entries(saved.quantities).filter(([id]) => known(id))),
+      }))
+      setChosen(Object.fromEntries(Object.entries(saved.chosen).filter(([id]) => known(id))))
+    },
+  })
+  const { busy, failure, submit, clear } = useSubmit(onDone, draft)
   const canUnits = can.has('equipment.read')
   const candidates = useQueries({
     queries: items.map((item) => ({
@@ -285,6 +308,7 @@ function WithdrawalForm({ contract, onDone, onCancel, onReload }: FormProps) {
         validate()
       }}
     >
+      <DraftNotice draft={draft} />
       <Card title="Dados da retirada" description="A retirada baixa o estoque disponível.">
         <div className="padded form-stack">
           <div className="master-form-grid">
@@ -443,7 +467,7 @@ type ReturnLine = {
 
 function ReturnForm({ contract, onDone, onCancel, onReload }: FormProps) {
   const { request } = useAuth()
-  const [key] = useState(() => crypto.randomUUID())
+  const [key, setKey] = useState(() => crypto.randomUUID())
   const [date, setDate] = useState(localDate)
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<ReturnLine[]>(() =>
@@ -480,7 +504,37 @@ function ReturnForm({ contract, onDone, onCancel, onReload }: FormProps) {
   )
   const [errors, setErrors] = useState<Errors>({})
   const [review, setReview] = useState<string[] | null>(null)
-  const { busy, failure, submit, clear } = useSubmit(onDone)
+  const draft = useDraft({
+    kind: 'return',
+    scope: String(contract.id),
+    value: {
+      key,
+      date,
+      notes,
+      lines: lines.map(({ key, selected, condition, destination, notes, quantity }) => ({
+        key,
+        selected,
+        condition,
+        destination,
+        notes,
+        quantity,
+      })),
+    },
+    baseVersion: contract.version,
+    onRestore: (saved) => {
+      setKey(saved.key)
+      setDate(saved.date)
+      setNotes(saved.notes)
+      // Only lines still with the customer come back; the item data is always the current one.
+      setLines((current) =>
+        current.map((line) => {
+          const typed = saved.lines.find((row) => row.key === line.key)
+          return typed ? { ...line, ...typed } : line
+        }),
+      )
+    },
+  })
+  const { busy, failure, submit, clear } = useSubmit(onDone, draft)
   const change = (lineKey: string, patch: Partial<ReturnLine>) =>
     setLines((known) => known.map((line) => (line.key === lineKey ? { ...line, ...patch } : line)))
   const active = lines.filter((line) => line.selected)
@@ -539,6 +593,7 @@ function ReturnForm({ contract, onDone, onCancel, onReload }: FormProps) {
         validate()
       }}
     >
+      <DraftNotice draft={draft} />
       <Card
         title="Dados da devolução"
         description="A devolução devolve os itens ao estoque, conforme a condição informada."
@@ -736,7 +791,51 @@ function RenewalForm({ contract, onDone, onCancel, onReload }: FormProps) {
   )
   const [errors, setErrors] = useState<Errors>({})
   const [review, setReview] = useState<string[] | null>(null)
-  const { busy, failure, submit, clear } = useSubmit(onDone)
+  const draft = useDraft({
+    kind: 'renewal',
+    scope: String(contract.id),
+    value: {
+      startDate,
+      option,
+      notes,
+      lines: lines.map(({ item, selected, quantity, units, period, periodCount, unitPrice }) => ({
+        id: item.id,
+        selected,
+        quantity,
+        units,
+        period,
+        periodCount,
+        unitPrice,
+      })),
+    },
+    baseVersion: contract.version,
+    onRestore: (saved) => {
+      setStartDate(saved.startDate)
+      setOption(saved.option)
+      setNotes(saved.notes)
+      setLines((current) =>
+        current.map((line) => {
+          const typed = saved.lines.find((row) => row.id === line.item.id)
+          if (!typed) return line
+          const { selected, quantity, period, periodCount, unitPrice } = typed
+          // Units no longer with the customer are not brought back.
+          const held = line.item.units
+            .filter((unit) => unit.state === 'EM_POSSE')
+            .map((unit) => unit.equipment_id)
+          return {
+            ...line,
+            selected,
+            quantity,
+            period,
+            periodCount,
+            unitPrice,
+            units: typed.units.filter((id) => held.includes(id)),
+          }
+        }),
+      )
+    },
+  })
+  const { busy, failure, submit, clear } = useSubmit(onDone, draft)
   const change = (id: number, patch: Partial<RenewalLine>) =>
     setLines((known) => known.map((line) => (line.item.id === id ? { ...line, ...patch } : line)))
   const periodOf = (line: RenewalLine) => (option === 'ANTERIORES' ? line.item.period : line.period)
@@ -832,6 +931,7 @@ function RenewalForm({ contract, onDone, onCancel, onReload }: FormProps) {
         validate()
       }}
     >
+      <DraftNotice draft={draft} />
       <Card
         title="Dados da renovação"
         description="A renovação cria um novo contrato na mesma cadeia e não movimenta estoque."

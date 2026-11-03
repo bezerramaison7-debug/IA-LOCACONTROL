@@ -53,6 +53,8 @@ export class ApiError extends Error {
     message: string,
     /** The server runs the local edition: a 401 means "no access", never "sign in". */
     public local = false,
+    /** "csrf": the session changed (renewed in another tab); fetch the current token. */
+    public retry = '',
   ) {
     super(message)
   }
@@ -82,6 +84,7 @@ export async function send(path: string, csrf: string, method = 'GET', body?: un
       response.status,
       typeof error.detail === 'string' ? error.detail : 'Não foi possível concluir a ação.',
       response.headers.get('X-LocaControl-Edition') === 'local',
+      response.headers.get('X-LocaControl-Retry') || '',
     )
   }
   return response.status === 204 ? undefined : response.json()

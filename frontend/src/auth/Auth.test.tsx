@@ -26,6 +26,8 @@ it('requires login, submits credentials and csrf logout without persisting token
     if (url.endsWith('/login')) return json(adminSession)
     if (url.endsWith('/logout')) return new Response(null, { status: 204 })
     if (url.endsWith('/dashboard')) return json(dashboard)
+    if (url.endsWith('/backups/status'))
+      return json({ runs: [], alert: null, requires_running: 'Computador ligado.' })
     return json({ detail: 'Entre novamente.' }, 401)
   })
   await screen.findByRole('heading', { name: 'Entrar na sua conta' })

@@ -1,6 +1,46 @@
 import { test, expect } from '@playwright/test'
 import { heading } from './helpers'
 
+// Automatic draft (ADR-024): kept on the server, offered again after a reload, and the form
+// survives the loss of the session (the local session is renewed without leaving the screen).
+test('local edition: a quote draft survives a reload and an ended session', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.goto('/#/orcamentos?novo=1')
+  const notes = page.getByLabel('Observações')
+  await notes.fill('Rascunho do teste E2E')
+  await expect(page.getByText(/Rascunho salvo automaticamente às/)).toBeVisible()
+  await page.reload()
+  await page.goto('/#/orcamentos?novo=1')
+  const offer = page.getByRole('region', { name: 'Rascunho encontrado' })
+  await expect(offer).toContainText('Nada dele foi gravado nos registros')
+  await offer.getByRole('button', { name: 'Recuperar rascunho' }).click()
+  await expect(notes).toHaveValue('Rascunho do teste E2E')
+
+  // The session cookie is gone: the next save renews the session and the form stays.
+  await page.context().clearCookies()
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/drafts/quote/new') &&
+      response.request().method() === 'PUT' &&
+      response.status() === 200 &&
+      (response.request().postData() || '').includes('depois da sessão'),
+    { timeout: 30_000 },
+  )
+  await notes.fill('Rascunho do teste E2E, depois da sessão')
+  await saved
+  await expect(notes).toHaveValue('Rascunho do teste E2E, depois da sessão')
+  await page.reload()
+  await page.goto('/#/orcamentos?novo=1')
+  await expect(offer).toBeVisible()
+  // The draft kept on the server is the one typed after the session was renewed.
+  await offer.getByRole('button', { name: 'Recuperar rascunho' }).click()
+  await expect(notes).toHaveValue('Rascunho do teste E2E, depois da sessão')
+  await page.reload()
+  await page.goto('/#/orcamentos?novo=1')
+  await page.getByRole('button', { name: 'Descartar rascunho' }).click()
+  await expect(notes).toHaveValue('')
+})
+
 // Server started by scripts/e2e-auth.py with LOCACONTROL_LOCAL_MODE=true and a temporary
 // database without any user: the app must open by itself on this computer.
 test('local edition: no login, no account areas, restore with the phrase only', async ({

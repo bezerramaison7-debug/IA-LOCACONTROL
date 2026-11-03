@@ -26,6 +26,8 @@ import {
   type QuoteFormItem,
 } from '../lib/quotes'
 import { Button } from '../components/Button'
+import { DraftNotice } from '../components/DraftNotice'
+import { useDraft } from '../lib/drafts'
 import { Card, Field } from '../components/ui'
 import { Failure } from './masters-shared'
 import { ActionFailure } from './contracts-shared'
@@ -109,6 +111,19 @@ export function ContractEditor({
   const startDate = useWatch({ control: form.control, name: 'start_date' })
   const customerId = useWatch({ control: form.control, name: 'customer_id' })
   const refresh = useWatch({ control: form.control, name: 'refresh_prices' })
+  const values = useWatch({ control: form.control })
+  // Automatic draft (ADR-024): the form as typed, never a contract record until it is saved.
+  const draft = useDraft({
+    kind: 'contract',
+    scope: contract ? String(contract.id) : 'new',
+    value: { values, labels, customerLabel },
+    baseVersion: contract?.version,
+    onRestore: (saved) => {
+      setLabels(saved.labels || {})
+      setCustomerLabel(saved.customerLabel || '')
+      form.reset(saved.values as QuoteForm)
+    },
+  })
   const validStart = /^\d{4}-\d{2}-\d{2}$/.test(startDate)
   const pricing: UseQueryResult<Pricing>[] = useQueries({
     queries: items.map((item) => ({
@@ -167,12 +182,15 @@ export function ContractEditor({
           return
         }
         try {
-          onSaved(await saveContract(request, values, contract))
+          const result = await saveContract(request, values, contract)
+          draft.finish()
+          onSaved(result)
         } catch (e) {
           setFailure(actionError(e, 'Não foi possível salvar o contrato.'))
         }
       })}
     >
+      <DraftNotice draft={draft} />
       <Card
         title="Dados do contrato"
         description="Rascunho editável. O número é definitivo e o estoque só sai na retirada."

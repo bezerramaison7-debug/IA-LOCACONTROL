@@ -171,9 +171,20 @@ Todo arquivo é entregue por rota autenticada e autorizada, como anexo, sem cami
 - Antes de substituir qualquer coisa o sistema verifica manifesto, hashes e integridade do banco, recusa conjunto de versão desconhecida ou mais nova, cria uma cópia `_pre-restore` do estado atual e move as pastas de arquivos atuais para `replaced_<data>` em vez de apagá-las.
 - Depois da restauração, sessões e contas voltam ao estado do backup: é preciso entrar novamente. O evento `backup.restored` é gravado com o rótulo do usuário que restaurou.
 - Configuração e execução manual são auditadas (`backup.configured`, `backup.requested`).
+- Importação de um `.zip` de outro disco (`POST /api/backups/import`, `backups.manage`): o arquivo é gravado com nome gerado, verificado por inteiro antes de ser aceito e auditado (`backup.imported`); o nome enviado nunca vira caminho. Limite de 8 GiB. A segunda cópia (`mirror_directory`) recebe o mesmo `.zip`: proteja aquela pasta como a de backups.
+- Proteção contra esgotamento do disco (A3): teto da pasta de backups e reserva de espaço livre (maior entre 10 GB e 15 %, configuráveis); nada é gravado se não couber; recuperação respeita a reserva. Gravação com `fsync` e verificação do conjunto antes de valer (M2).
+- O histórico das execuções (`backup-history.json`, ao lado do banco) guarda nomes, tamanhos e o motivo curto da falha, sem caminhos nem conteúdo.
 - Restauração em modo manutenção (`app/ops/maintenance.py`): um middleware conta as requisições em andamento; durante a restauração toda requisição nova recebe 503 (exceto `/health`, que responde `maintenance` sem tocar no banco), e a restauração espera as em andamento terminarem (até 30 s; senão 409 sem alterar nada). Nenhuma requisição observa banco ou pastas restaurados pela metade.
 - Desfazer automático: falha depois de o banco vivo ter sido sobrescrito recoloca as pastas movidas para `replaced_*` e o banco da cópia `_pre-restore`, registra em log e responde 500 dizendo que nada foi alterado; se o desfazer falhar, a mensagem aponta a cópia `_pre-restore` para restauração manual.
 - Limite honesto: cada requisição de escrita só responde sucesso depois do `COMMIT` (dependência `database` com `scope="function"`). O SQLite com journal de rollback protege contra corrupção e transação pela metade numa queda, mas a operação ainda não confirmada no instante da queda é perdida: não há promessa de perda zero em qualquer falha de energia.
+
+### Rascunhos automáticos (ADR-024)
+
+Rascunhos ficam na tabela `form_drafts`, com o conteúdo digitado (que pode incluir dados de clientes), e entram nos backups como o resto da base. Cada rascunho pertence a quem o digitou (`owner`); a API só lê, grava ou apaga os do próprio dono e exige a permissão da operação definitiva. Gravar é substituição completa (repetível), sem auditoria; o rascunho nunca é lido pelos serviços de estoque, contratos, documentos ou relatórios. Expiração de 7 dias.
+
+### Sessão local e formulários
+
+Na edição local, a interface renova a sessão expirada (401) ou desatualizada (403 com `X-LocaControl-Retry: csrf`, enviado só na falha de CSRF) por `GET /api/auth/me`, com as mesmas condições da sessão automática. Leituras são repetidas uma vez; escritas nunca são repetidas automaticamente — a única exceção é a gravação do rascunho, que é substituição completa e portanto repetível. As verificações de origem, cabeçalho do app e CSRF não mudaram.
 
 ### Fiscal
 

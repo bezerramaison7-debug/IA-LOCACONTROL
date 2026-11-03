@@ -94,7 +94,7 @@ def test_development_resources_are_in_the_project():
 def test_prepare_creates_migrated_database_in_empty_data_dir(data_dir, monkeypatch):
     monkeypatch.setenv("LOCACONTROL_LOCAL_MODE", "true")
     assert server.main(["--prepare"]) == 0
-    assert revision(data_dir / "locacontrol.db") == "0010_backups"
+    assert revision(data_dir / "locacontrol.db") == "0011_drafts"
     # New database: nothing to copy before migrating.
     assert not (data_dir / "backups").exists()
     connection = sqlite3.connect(data_dir / "locacontrol.db")
@@ -115,7 +115,7 @@ def test_prepare_copies_old_database_before_migrating(data_dir, monkeypatch):
     assert server.main(["--prepare"]) == 0
     copies = list((data_dir / "backups").glob("pre-upgrade-*.db"))
     assert len(copies) == 1 and revision(copies[0]) == "0009_fiscal"
-    assert revision(database) == "0010_backups"
+    assert revision(database) == "0011_drafts"
     # Already at head: no second copy.
     assert server.main(["--prepare"]) == 0
     assert len(list((data_dir / "backups").glob("pre-upgrade-*.db"))) == 1
@@ -173,7 +173,7 @@ def test_simultaneous_starts_never_migrate_twice(data_dir):
     # Either the second one found the lock taken, or it started after the first had finished.
     assert codes in ([0, 0], [0, server.EXIT_ALREADY_RUNNING]), [p.stderr.read() for p in starts]
     assert len(list((data_dir / "backups").glob("pre-upgrade-*.db"))) == 1
-    assert revision(database) == "0010_backups"
+    assert revision(database) == "0011_drafts"
 
 
 # ---- unavailable data folder -----------------------------------------------------------

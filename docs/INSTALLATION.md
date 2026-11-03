@@ -136,6 +136,8 @@ Com `--prepare`, o servidor só prepara o banco e encerra.
 
 **Executável (prova de empacotamento)**: `scripts\package.ps1` gera `dist-app\LocaControl\LocaControl.exe` a partir de `packaging\locacontrol.spec`. A saída é uma pasta com `_internal\`, ignorada pelo Git, e o comando requer `pip install pyinstaller==6.22.3` no `.venv` e o `frontend\dist` compilado. O executável recebe `LOCACONTROL_DATA_DIR` e `LOCACONTROL_LOCAL_MODE` por variável de ambiente (ou pelo `.env` da pasta de dados, exceto `LOCACONTROL_DATA_DIR`) e a porta por `--port`. O instalador e o teste em Windows limpo ficam para o P1-E.
 
+**Espaço para backups (A3)**: o backup automático vem ligado (a cada 20 minutos) e só grava se o disco da pasta de backups continuar com pelo menos 10 GB ou 15 % livres (o maior), com teto de 10 GB para a pasta. Planeje a pasta de backups em disco com folga; em discos grandes e cheios ajuste os limites em **Gestão → Backups**. A cópia `pre-upgrade-*.db` que o servidor faz antes de atualizar a estrutura do banco ainda não passa por esses limites.
+
 ## 7. Uso por outros computadores da rede
 
 O atalho de início não libera acesso pela rede. Para isso é preciso, no mínimo:

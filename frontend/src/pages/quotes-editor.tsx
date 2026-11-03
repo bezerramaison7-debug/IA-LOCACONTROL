@@ -24,6 +24,8 @@ import {
   type QuoteFormItem,
 } from '../lib/quotes'
 import { Button } from '../components/Button'
+import { DraftNotice } from '../components/DraftNotice'
+import { useDraft } from '../lib/drafts'
 import { Card, ErrorState, Field, Select } from '../components/ui'
 import { Failure } from './masters-shared'
 
@@ -348,6 +350,19 @@ export function QuoteEditor({
   const startDate = useWatch({ control: form.control, name: 'start_date' })
   const customerId = useWatch({ control: form.control, name: 'customer_id' })
   const refresh = useWatch({ control: form.control, name: 'refresh_prices' })
+  const values = useWatch({ control: form.control })
+  // Automatic draft (ADR-024): the form as typed, never a quote record until it is saved.
+  const draft = useDraft({
+    kind: 'quote',
+    scope: quote ? String(quote.id) : 'new',
+    value: { values, labels, customerLabel },
+    baseVersion: quote?.version,
+    onRestore: (saved) => {
+      setLabels(saved.labels || {})
+      setCustomerLabel(saved.customerLabel || '')
+      form.reset(saved.values as QuoteForm)
+    },
+  })
   const validStart = /^\d{4}-\d{2}-\d{2}$/.test(startDate)
   const pricing: UseQueryResult<Pricing>[] = useQueries({
     queries: items.map((item) => ({
@@ -404,7 +419,9 @@ export function QuoteEditor({
           return
         }
         try {
-          onSaved(await saveQuote(request, values, quote))
+          const result = await saveQuote(request, values, quote)
+          draft.finish()
+          onSaved(result)
         } catch (e) {
           setFailure({
             message: failureMessage(e, 'Não foi possível salvar o orçamento.'),
@@ -413,6 +430,7 @@ export function QuoteEditor({
         }
       })}
     >
+      <DraftNotice draft={draft} />
       <Card
         title="Dados do orçamento"
         description="Rascunho editável. Orçamento não reserva estoque."

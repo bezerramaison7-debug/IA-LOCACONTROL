@@ -1,8 +1,9 @@
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import Field, field_validator
 from sqlalchemy.orm import Session
@@ -21,12 +22,22 @@ Manage = Annotated[User, Depends(require("backups.manage"))]
 
 class BackupConfig(Input):
     enabled: bool
+    # Every 20 minutes (default), every 60 minutes, or once a day at `time` (ADR-024).
+    frequency: Literal["20min", "60min", "daily"] = "20min"
     time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    # Days with a kept copy; every set of the last 24 hours is kept besides these.
     keep: int = Field(ge=1, le=365)
     # Empty keeps the default folder inside the installation.
     directory: str = Field(default="", max_length=260)
+    # Optional second copy of each set, ideally on another disk; empty turns it off.
+    mirror_directory: str = Field(default="", max_length=260)
+    # Storage limits (A3): cap of the backup folder; free space kept on its disk, the larger of
+    # the absolute and the relative floor.
+    max_total_gb: int = Field(default=10, ge=1, le=100_000)
+    min_free_gb: int = Field(default=10, ge=0, le=100_000)
+    min_free_percent: int = Field(default=15, ge=0, le=90)
 
-    @field_validator("directory")
+    @field_validator("directory", "mirror_directory")
     @classmethod
     def absolute_directory(cls, value):
         if value and not Path(value).is_absolute():
@@ -47,16 +58,26 @@ def manager(request: Request) -> BackupManager:
 
 def state(backups: BackupManager, db) -> dict:
     config = backups.config(db)
+    items = backups.listing(config)
     return {
         "config": config,
         "directory": str(backups.directory(config)),
-        "items": backups.listing(config),
+        "items": items,
+        "total_size": sum(item["size"] for item in items),
+        "status": backups.status(config),
     }
 
 
 @router.get("")
 def overview(request: Request, db: DB, user: Manage):
     return state(manager(request), db)
+
+
+@router.get("/status")
+def status(request: Request, db: DB, user: Manage):
+    """Summary for the dashboard warning: last copy, last failure and the alert to show."""
+    backups = manager(request)
+    return backups.status(backups.config(db))
 
 
 @router.put("/config")
@@ -68,6 +89,18 @@ def configure(request: Request, payload: BackupConfig, db: DB, user: Manage):
         backups.directory(values).mkdir(parents=True, exist_ok=True)
     except OSError as error:
         raise HTTPException(422, "Não foi possível usar a pasta informada.") from error
+    if values["mirror_directory"]:
+        mirror = Path(values["mirror_directory"])
+        if mirror.resolve() == backups.directory(values).resolve():
+            raise HTTPException(422, "A segunda cópia precisa ficar em outra pasta.")
+        try:
+            mirror.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise HTTPException(
+                422,
+                "Não foi possível usar a pasta da segunda cópia. Confira se o disco está "
+                "conectado.",
+            ) from error
     row = db.get(AppSetting, SETTING_KEY)
     if row is None:
         row = AppSetting(key=SETTING_KEY, value={})
@@ -90,6 +123,29 @@ def run_now(request: Request, db: DB, user: Manage):
     # Commit first: the backup reads the database through its own connection.
     db.commit()
     return backups.create(config, "manual")
+
+
+@router.post("/import", status_code=201)
+async def import_set(request: Request, db: DB, user: Manage, file: Annotated[UploadFile, File()]):
+    """Brings a set kept on another disk into the backup folder, verified, ready to restore."""
+    backups = manager(request)
+    config = backups.config(db)
+    filename = (file.filename or "").replace("\\", "/").split("/")[-1][:255]
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(422, "Escolha o arquivo .zip de um backup do LocaControl.")
+    # Release the writer lock: copying and verifying a large set must not block the store.
+    db.commit()
+    try:
+        result = await run_in_threadpool(backups.import_set, config, file.file, filename)
+    finally:
+        await file.close()
+    IdentityService(db, user).audit(
+        "backup.imported",
+        "backups",
+        result["name"],
+        {"original_name": filename, "size": result["size"], "revision": result["revision"]},
+    )
+    return result
 
 
 @router.post("/{name}/verify")

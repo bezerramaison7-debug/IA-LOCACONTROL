@@ -17,6 +17,7 @@ from app.auth.local import installation, local_operator, not_in_local_mode
 from app.auth.routes import router as identity_router
 from app.contracts.routes import router as contracts_router
 from app.core.config import Settings, resource
+from app.drafts.routes import router as drafts_router
 from app.fiscal.routes import router as fiscal_router
 from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
@@ -87,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
         allow_headers=["Content-Type", "X-CSRF-Token", "X-LocaControl-Request"],
+        expose_headers=["X-LocaControl-Edition", "X-LocaControl-Retry"],
     )
 
     @app.middleware("http")
@@ -128,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(portal_router, dependencies=[Depends(not_in_local_mode)])
     app.include_router(fiscal_router)
     app.include_router(backups_router)
+    app.include_router(drafts_router)
     dist = resource("frontend/dist")
     if dist.is_dir():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
