@@ -329,7 +329,7 @@ def recover_interrupted_upgrade(settings: Settings, root: Path) -> str | None:
             raise DatabaseDamaged(
                 "A atualização anterior do banco foi interrompida e a cópia feita antes dela não "
                 f"está disponível ({copy or 'sem registro'}). Nada foi alterado. Restaure um "
-                "backup (docs/ADMIN_GUIDE.md, restauração manual) ou procure o suporte."
+                "backup (docs/ADMIN_GUIDE.md 4.1.1, restauração manual) ou procure o suporte."
             )
         message = "A atualização anterior foi interrompida; o banco está íntegro e será atualizado."
     marker.unlink(missing_ok=True)
@@ -352,7 +352,7 @@ def check_after_unclean_end(settings: Settings, root: Path) -> str | None:
         raise DatabaseDamaged(
             "O LocaControl não foi encerrado normalmente e o banco falhou na verificação de "
             f"integridade ({result[:200]}). Nada foi servido nem alterado. Restaure o backup mais "
-            "recente (docs/ADMIN_GUIDE.md) antes de voltar a usar o sistema."
+            "recente (docs/ADMIN_GUIDE.md 4.1.1) antes de voltar a usar o sistema."
         )
     removed = remove_partial_backups(settings, database)
     pid_file.unlink(missing_ok=True)

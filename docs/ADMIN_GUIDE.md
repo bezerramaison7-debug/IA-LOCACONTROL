@@ -116,6 +116,16 @@ Os formulários longos — orçamento (novo ou em edição), contrato direto (no
 - Se o servidor estiver fora do ar, o formulário continua aberto e a linha abaixo dele avisa "Rascunho não salvo agora"; o sistema tenta de novo sozinho.
 - Na edição local, a expiração ou a renovação da sessão não fecha o formulário: o sistema abre uma sessão nova sem sair da tela. Uma leitura é repetida uma vez; um envio nunca é repetido sozinho — aparece "A sessão deste computador foi renovada automaticamente. Nada foi gravado: confira os dados e envie novamente."
 
+## 4.1.1 Restauração manual (o servidor não inicia)
+
+Use só quando o LocaControl recusar o início com o código 8 em `C:\ProgramData\LocaControl\logs\servidor.log` ("o banco falhou na verificação de integridade" ou "a cópia feita antes dela não está disponível") — a restauração pela tela Backups precisa do servidor funcionando. Como **administrador**:
+
+1. Pare o serviço: `"C:\Program Files\LocaControl\LocaControl.exe" parar`.
+2. Em `C:\ProgramData\LocaControl`, renomeie `locacontrol.db` para `locacontrol.db.danificado-<data>` (não apague: ele fica para análise) e apague `locacontrol.pid`, se existir.
+3. Escolha o backup mais recente (`backups\locacontrol_<data>.zip`, ou o da segunda cópia/pendrive) e extraia dele o arquivo `locacontrol.db` para `C:\ProgramData\LocaControl`. Se for voltar também documentos e planilhas, extraia as pastas `documents\`, `imports\` e `fiscal\` do mesmo `.zip` por cima das atuais.
+4. Execute o instalador da mesma versão de novo (ele reaplica as permissões da pasta) ou inicie o serviço: `sc start LocaControl`.
+5. Confira em **Gestão → Backups** e no **Histórico** o que foi recuperado; o que foi gravado depois daquele backup precisa ser lançado de novo.
+
 ## 4.2 Rede da loja: computador principal e estações
 
 Na edição local com **modo rede** (opção "Permitir que outros computadores da loja usem este" do instalador, `INSTALLATION.md` 1.1), outros computadores da loja usam a mesma base, sempre pelo computador principal: o banco nunca é aberto pela rede. Sem o modo rede, o servidor só atende o próprio computador.
@@ -123,7 +133,7 @@ Na edição local com **modo rede** (opção "Permitir que outros computadores d
 **Parear uma estação** (uma vez por computador, sem senha):
 
 1. No computador principal, abra **Gestão → Estações da rede** e clique em **Gerar código de pareamento**. O código tem 26 caracteres (por exemplo `K7PA-3QMR-…-9Z`), vale por 10 minutos, para uma única estação; 5 tentativas erradas o cancelam.
-2. Na estação, execute o instalador e escolha **Conectar à loja**, com o endereço do principal (por exemplo `192.168.0.10` ou `NOME-DO-PC`) e o código. O instalador confere com o código que o certificado é mesmo do computador principal antes de confiar nele (se não conferir, nada é instalado) e abre o navegador em `https://<principal>:8443` com o código já preenchido. Em **Conectar este computador à loja**, informe o **Nome desta estação** (Balcão 1, Depósito…) e clique em **Conectar à loja**. Se o navegador avisar "conexão não segura", **não continue**: execute o "Conectar à loja" de novo.
+2. Na estação, execute o instalador e escolha **Conectar à loja**, com o endereço do principal (por exemplo `192.168.0.10` ou `NOME-DO-PC`) e o código. O instalador confere com o código que o certificado é mesmo do computador principal antes de confiar nele (se não conferir, nada é instalado) e abre o navegador em `https://<principal>:8443` com o código já preenchido. Se não conferir, o instalador mostra o motivo e deixa tentar de novo com um código novo. O certificado instalado **ainda não é o pareamento**: em **Conectar este computador à loja**, informe o **Nome desta estação** (Balcão 1, Depósito…) e clique em **Conectar à loja**. Se o navegador avisar "conexão não segura", **não continue**: execute o "Conectar à loja" de novo.
 3. Pronto: a estação abre a Visão geral e, no rodapé do menu, mostra "Estação <nome> · rede da loja". O acesso dela fica guardado no navegador daquele computador.
 
 **O que só o computador principal faz**: configurar, baixar, importar e restaurar backups; gerar códigos e revogar estações. As estações fazem todo o atendimento, acompanham a proteção, verificam backups e podem fazer um backup na hora.
@@ -141,6 +151,10 @@ Na edição local com **modo rede** (opção "Permitir que outros computadores d
 **Restauração de backup e estações**: a lista de estações não faz parte do backup. Restaurar um backup antigo não reativa uma estação revogada nem desconecta as pareadas depois dele (elas só abrem uma sessão nova sozinhas). Se o computador principal for reinstalado do zero, ele ganha um certificado novo: em cada estação, execute o instalador com **Conectar à loja** de novo (procedimento completo em `INSTALLATION.md` 1.1, "Recuperação depois de perder o computador principal").
 
 **Com o principal desligado** as estações ficam sem acesso; o formulário aberto continua na tela e o rascunho volta a ser salvo quando o principal retorna.
+
+**A loja mudou de rede** (roteador novo, outra faixa de IP): a tela **Estações da rede** avisa que o endereço deste computador está fora das redes do certificado. Como administrador, execute `"C:\Program Files\LocaControl\LocaControl.exe" nova-autoridade --confirmar` e, em cada estação, o instalador com **Conectar à loja**. Para evitar isso com DHCP, reserve no roteador um IP fixo para o computador principal.
+
+**Pastas e permissões**: a pasta de dados (`C:\ProgramData\LocaControl`) só abre para administradores e para o próprio serviço do LocaControl; os outros usuários do Windows usam o sistema pelo navegador. Pasta de backup em HD externo NTFS precisa permitir gravação ao serviço (`INSTALLATION.md` 1.1); unidade de rede mapeada (Z:) não funciona para o serviço — use `\\servidor\pasta`.
 
 **Segurança da rede**: as estações usam HTTPS (porta 8443) com o certificado da própria loja, aceito só de endereços de rede privada (192.168.x, 10.x, 172.16–31.x) e liberado no firewall só para a sub-rede local. Nunca ignore um aviso de certificado do navegador numa estação. Mantenha a rede da loja fechada (Wi-Fi com senha, sem convidados) e revogue qualquer estação perdida ou suspeita. **Aviso**: HTTPS da loja testado em CI, ainda não homologado em computadores físicos.
 
