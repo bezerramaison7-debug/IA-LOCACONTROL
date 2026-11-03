@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
+import { ApiError } from '../auth/api'
 import { useAuth } from '../auth/context'
 
 /** Automatic drafts (ADR-024): the form as typed, kept on the server apart from the records.
@@ -93,6 +94,13 @@ export function useDraft<T extends object>({
         })
         .catch((error) => {
           if (done.current) return
+          clearTimeout(retry.current)
+          if (error instanceof ApiError && error.retry === 'renewed') {
+            // The session was just renewed. Saving a draft is a full replacement, safe to
+            // repeat, so it goes again at once (definitive writes never do).
+            retry.current = setTimeout(() => setAttempt((n) => n + 1), 0)
+            return
+          }
           setState({
             kind: 'error',
             message:
@@ -100,7 +108,6 @@ export function useDraft<T extends object>({
               (error instanceof Error ? error.message : 'sem conexão') +
               '). O formulário continua aberto; nova tentativa em instantes.',
           })
-          clearTimeout(retry.current)
           retry.current = setTimeout(() => setAttempt((n) => n + 1), DRAFT_RETRY_MS)
         })
     }, DRAFT_DELAY_MS)

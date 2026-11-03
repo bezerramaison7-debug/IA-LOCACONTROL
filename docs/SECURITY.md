@@ -183,7 +183,7 @@ Rascunhos ficam na tabela `form_drafts`, com o conteúdo digitado (que pode incl
 
 ### Sessão local e formulários
 
-Na edição local, a interface renova a sessão expirada (401) ou desatualizada (403 com `X-LocaControl-Retry: csrf`, enviado só na falha de CSRF) por `GET /api/auth/me`, com as mesmas condições da sessão automática. Leituras são repetidas uma vez; escritas nunca são repetidas automaticamente. As verificações de origem, cabeçalho do app e CSRF não mudaram.
+Na edição local, a interface renova a sessão expirada (401) ou desatualizada (403 com `X-LocaControl-Retry: csrf`, enviado só na falha de CSRF) por `GET /api/auth/me`, com as mesmas condições da sessão automática. Leituras são repetidas uma vez; escritas nunca são repetidas automaticamente — a única exceção é a gravação do rascunho, que é substituição completa e portanto repetível. As verificações de origem, cabeçalho do app e CSRF não mudaram.
 
 ### Fiscal
 

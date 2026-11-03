@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, it } from 'vitest'
 import { DraftNotice } from '../components/DraftNotice'
 import { mockRequest, renderPage, type Handler } from '../test/render'
+import { ApiError } from '../auth/api'
 import { useDraft } from './drafts'
 
 /** A long form reduced to one field; the hook and the notice are the real ones. */
@@ -106,4 +107,23 @@ it('discarding removes the stored draft and starts a clean form', async () => {
   await user.click(await screen.findByRole('button', { name: 'Descartar rascunho' }))
   expect(draftWrites(request)).toEqual([['/drafts/quote/new', 'DELETE']])
   expect(screen.getByLabelText('Observações')).toHaveValue('')
+})
+
+it('after a session renewal the draft is saved again at once (a draft save is repeatable)', async () => {
+  const user = userEvent.setup()
+  let renewed = false
+  const request = setup((_path, method) => {
+    if (method === 'GET') return { draft: null }
+    if (method === 'PUT' && !renewed) {
+      renewed = true
+      throw new ApiError(401, 'Sessão renovada.', true, 'renewed')
+    }
+    return { draft: stored }
+  })
+  await user.type(screen.getByLabelText('Observações'), 'Depois da sessão')
+  expect(
+    await screen.findByText(/Rascunho salvo automaticamente às/, {}, { timeout: 4000 }),
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/Rascunho não salvo agora/)).toBeNull()
+  expect(draftWrites(request).filter(([, method]) => method === 'PUT')).toHaveLength(2)
 })

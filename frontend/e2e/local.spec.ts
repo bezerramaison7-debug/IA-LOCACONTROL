@@ -18,17 +18,23 @@ test('local edition: a quote draft survives a reload and an ended session', asyn
 
   // The session cookie is gone: the next save renews the session and the form stays.
   await page.context().clearCookies()
-  await notes.fill('Rascunho do teste E2E, depois da sessão')
-  await expect(page.getByText(/Rascunho salvo automaticamente às/)).toBeVisible({
-    timeout: 30_000,
-  })
-  await expect(notes).toHaveValue('Rascunho do teste E2E, depois da sessão')
-  const saved = await page.request.get('/api/drafts/quote/new', {
-    headers: { 'X-LocaControl-Request': '1' },
-  })
-  expect((await saved.json()).draft.payload.values.notes).toBe(
-    'Rascunho do teste E2E, depois da sessão',
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/drafts/quote/new') &&
+      response.request().method() === 'PUT' &&
+      response.status() === 200 &&
+      (response.request().postData() || '').includes('depois da sessão'),
+    { timeout: 30_000 },
   )
+  await notes.fill('Rascunho do teste E2E, depois da sessão')
+  await saved
+  await expect(notes).toHaveValue('Rascunho do teste E2E, depois da sessão')
+  await page.reload()
+  await page.goto('/#/orcamentos?novo=1')
+  await expect(offer).toBeVisible()
+  // The draft kept on the server is the one typed after the session was renewed.
+  await offer.getByRole('button', { name: 'Recuperar rascunho' }).click()
+  await expect(notes).toHaveValue('Rascunho do teste E2E, depois da sessão')
   await page.reload()
   await page.goto('/#/orcamentos?novo=1')
   await page.getByRole('button', { name: 'Descartar rascunho' }).click()
