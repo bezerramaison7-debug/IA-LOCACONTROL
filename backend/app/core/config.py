@@ -55,6 +55,19 @@ class Settings(BaseSettings):
     # Local edition (ADR-023): no login, automatic session for this computer only, no portal.
     # The packaged edition turns it on; False keeps the login-based edition.
     local_mode: bool = False
+    # Network edition (P1-D, ADR-025): the main computer listens on the store network and paired
+    # stations use the same API. Only with local_mode; False keeps the server on 127.0.0.1.
+    network_mode: bool = False
+    # Station addresses accepted besides the private ranges (10/8, 172.16/12, 192.168/16, fc00::/7
+    # and link-local), e.g. ["100.64.0.0/10"] for an unusual store network.
+    station_networks: list[str] = []
+    # Names by which stations reach this server besides IP literals and this computer's name.
+    station_hosts: list[str] = []
+    # Station token rotation (A1): a new token after this long in use (and at every new session).
+    station_token_rotate_seconds: int = Field(default=900, ge=1, le=86_400)
+    # A retired token is still accepted this long (requests in flight, other tabs) before its
+    # use counts as reuse of a copied credential.
+    station_token_grace_seconds: int = Field(default=120, ge=1, le=3_600)
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     allowed_origins: list[str] = [
         "http://localhost:8000",

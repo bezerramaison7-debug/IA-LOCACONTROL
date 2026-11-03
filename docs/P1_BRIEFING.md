@@ -33,7 +33,7 @@ Monólito modular existente (frontend compilado + FastAPI + SQLite). Uma instala
 | P1-B Base de instalação (programa × dados, `LOCACONTROL_DATA_DIR`, ponto de entrada `app.server`, instância única, prova PyInstaller) | Implementado; instalador e teste em Windows limpo seguem pendentes (P1-E) | branch `p1/b-instalacao`, `docs/INSTALLATION.md` 6.1 |
 | P1 Instalador único | Pendente | — |
 | P1-C Proteção automática (backup 20/60 min, histórico e aviso, segunda cópia, importação e restauração de outro disco, rascunhos, sessão local preservada; limites de espaço e verificação após gravação) | Implementado com as correções A3 e M2 da auditoria; validado no Linux da nuvem; homologação Windows pendente (seção abaixo) | branch `p1/c-protecao`, ADR-024 |
-| P1 Rede local | Pendente | — |
+| P1-D Rede local e pareamento (modo rede, código temporário, credencial por estação com rotação e detecção de reuso, revogação, só-principal incluindo importação do Excel, três identidades, lista de estações resiliente, auditoria por `station_id`, restauração sem efeito nos pareamentos, concorrência com servidor real) | Implementado com as correções A1, A2, M4 e M5 da auditoria; validado no Linux da nuvem; homologação Windows pendente (seção abaixo) | branch `p1/d-rede`, ADR-025 |
 | P1 Importação Excel (continuidade) | Pendente; histórico depende do Excel real | — |
 
 ## Requisitos do P1 (resumo fiel do briefing)
@@ -56,7 +56,7 @@ Um PR por tema (validação, integridade, sem login, empacotamento, proteção a
 ## Critérios adicionais para as próximas frentes (registrados em 2026-11-01)
 - **P1-A/C:** expiração e renovação da sessão local preservam o formulário em edição; nenhuma escrita é repetida automaticamente sem idempotência. *Atendido no P1-C* (ADR-024): renovação sem desmontar a tela, leitura repetida uma vez, escrita nunca repetida.
 - **P1-C/E:** existe procedimento utilizável e verificado para recuperar backups guardados em outro disco. *Atendido no P1-C*: restauração com a pasta de backups em outro disco (teste com sistema de arquivos distinto) e importação verificada do `.zip` (`ADMIN_GUIDE.md` 4); falta repetir no Windows com pendrive/HD externo.
-- **P1-D:** distinguir identidade da base/loja, do servidor e das estações; definir o efeito da restauração sobre pareamentos e revogações.
+- **P1-D:** distinguir identidade da base/loja, do servidor e das estações; definir o efeito da restauração sobre pareamentos e revogações. *Atendido no P1-D* (ADR-025, `test_stations.py`).
 - **Demonstração (pendente):** pacote de demonstração a partir do empacotamento do P1-B — executável sem login, pasta de dados exclusiva, dados fictícios cobrindo cliente, produto, preço, orçamento, contrato, retirada, renovação e devolução, marcação visível de DEMONSTRAÇÃO, sem dados reais/.env/backups, validado pelo próprio executável (interface e PDFs de orçamento e contrato), entregue com caminho, SHA de origem, checksum e instruções; distinguir "testado nesta máquina" de "validado em Windows limpo".
 
 ## P1-C — o que falta validar no Windows
@@ -66,3 +66,11 @@ Um PR por tema (validação, integridade, sem login, empacotamento, proteção a
 - Pasta de backups e segunda cópia em pendrive/HD externo (letras de unidade diferentes): backup, desconexão do disco (aviso), restauração direto da pasta em outro disco e importação do `.zip`.
 - Restauração com arquivos abertos por outros programas (antivírus, Explorer) na pasta de dados.
 - Rascunhos: fechar o navegador e reiniciar o Windows no meio de um orçamento e de uma retirada; recuperar.
+
+## P1-D — o que falta validar no Windows
+- Rotação do acesso das estações em uso real por horas (sem revogação indevida), cópia de cookies entre dois PCs (deve revogar), alerta no principal.
+- `stations.json` com `fsync` no NTFS; queda de energia durante a gravação.
+- Duas estações Windows reais na mesma rede, pelo navegador, com o principal empacotado em modo rede; regra de firewall do Windows limitada à rede local (P1-E).
+- Nome do computador principal (`http://NOME-DO-PC:8000`) além do IP; IPv6 link-local.
+- Queda do principal com estações abertas (formulário preservado, rascunho, volta).
+- Desempenho com várias estações gravando ao mesmo tempo no SQLite do principal.

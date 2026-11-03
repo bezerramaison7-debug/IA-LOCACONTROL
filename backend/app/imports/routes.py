@@ -15,8 +15,12 @@ from app.imports.models import ImportBatch
 from app.imports.schemas import Confirmation, Mapping
 from app.imports.service import SCHEMAS, ImportService, batch_view, fields
 from app.imports.workbook import MAX_BYTES, analysis, checksum, read_workbook
+from app.network.stations import principal_only
 
 router = APIRouter(prefix="/api/imports", tags=["Importação Excel"])
+# Network edition (decision of the architect, 2026-11-03): sending, previewing and confirming an
+# import happen on the main computer only; stations consult batches and reports.
+Principal = Annotated[None, Depends(principal_only)]
 Reader = Annotated[User, Depends(require("imports.read"))]
 Writer = Annotated[User, Depends(require("imports.write"))]
 
@@ -42,7 +46,9 @@ def batches(db: DB, user: Reader, offset: Annotated[int, Query(ge=0)] = 0):
 
 
 @router.post("/upload", status_code=201)
-async def upload(request: Request, db: DB, user: Writer, file: Annotated[UploadFile, File()]):
+async def upload(
+    request: Request, db: DB, user: Writer, _: Principal, file: Annotated[UploadFile, File()]
+):
     filename = (file.filename or "").replace("\\", "/").split("/")[-1][:255]
     if Path(filename).suffix.lower() not in {".xlsx", ".xlsm"}:
         raise HTTPException(422, "Use .xlsx ou .xlsm. Salve arquivos .xls como .xlsx no Excel.")
@@ -91,7 +97,7 @@ def details(batch_id: str, request: Request, db: DB, user: Reader):
 
 
 @router.post("/{batch_id}/new-conversion", status_code=201)
-def new_conversion(batch_id: str, request: Request, db: DB, user: Writer):
+def new_conversion(batch_id: str, request: Request, db: DB, user: Writer, _: Principal):
     importer = service(request, db, user)
     source = importer.batch(batch_id)
     sheets = importer.read(source)
@@ -135,13 +141,15 @@ def original(batch_id: str, request: Request, db: DB, user: Reader):
 
 
 @router.post("/{batch_id}/preview")
-def preview(batch_id: str, payload: Mapping, request: Request, db: DB, user: Writer):
+def preview(batch_id: str, payload: Mapping, request: Request, db: DB, user: Writer, _: Principal):
     importer = service(request, db, user)
     return importer.process(importer.batch(batch_id), payload)
 
 
 @router.post("/{batch_id}/confirm")
-def confirm(batch_id: str, payload: Confirmation, request: Request, db: DB, user: Writer):
+def confirm(
+    batch_id: str, payload: Confirmation, request: Request, db: DB, user: Writer, _: Principal
+):
     importer = service(request, db, user)
     return importer.confirm(importer.batch(batch_id), payload)
 

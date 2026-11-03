@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from alembic.script import ScriptDirectory
 from fastapi import Depends, FastAPI
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,12 +16,16 @@ from app import __version__
 from app.api.health import router as health_router
 from app.auth.local import installation, local_operator, not_in_local_mode
 from app.auth.routes import router as identity_router
+from app.auth.routes import set_station_cookie
 from app.contracts.routes import router as contracts_router
 from app.core.config import Settings, resource
 from app.drafts.routes import router as drafts_router
 from app.fiscal.routes import router as fiscal_router
 from app.imports.routes import router as imports_router
 from app.masters.routes import router as masters_router
+from app.network.routes import record_reuse
+from app.network.routes import router as stations_router
+from app.network.stations import registry_for
 from app.ops.backup import BackupManager, BackupScheduler
 from app.ops.maintenance import MaintenanceGate, MaintenanceMiddleware
 from app.ops.routes import router as backups_router
@@ -81,6 +86,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="LocaControl API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.gate = MaintenanceGate()
+    # Paired stations of the store network (ADR-025); outside the database on purpose.
+    app.state.stations = registry_for(settings)
     app.add_middleware(MaintenanceMiddleware, gate=app.state.gate)
     app.add_middleware(
         CORSMiddleware,
@@ -88,12 +95,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
         allow_headers=["Content-Type", "X-CSRF-Token", "X-LocaControl-Request"],
-        expose_headers=["X-LocaControl-Edition", "X-LocaControl-Retry"],
+        expose_headers=["X-LocaControl-Edition", "X-LocaControl-Retry", "X-LocaControl-Pairing"],
     )
 
     @app.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)
+        # Station token rotation and reuse (A1), after the request's transaction has ended.
+        rotate = getattr(request.state, "station_rotate", None)
+        if rotate:
+            set_station_cookie(response, settings, rotate)
+        reuse = getattr(request.state, "station_reuse", None)
+        if reuse:
+            await run_in_threadpool(record_reuse, app.state.engine, reuse)
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
             if settings.local_mode:
@@ -131,6 +145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(fiscal_router)
     app.include_router(backups_router)
     app.include_router(drafts_router)
+    app.include_router(stations_router)
     dist = resource("frontend/dist")
     if dist.is_dir():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")

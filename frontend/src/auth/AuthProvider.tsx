@@ -10,6 +10,9 @@ export const SESSION_RENEWED =
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [local, setLocal] = useState(false)
+  const [station, setStation] = useState<{ id: string; name: string } | null>(null)
+  const [network, setNetwork] = useState(false)
+  const [pairing, setPairing] = useState(false)
   const localRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -39,6 +42,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const data = sessionSchema.parse(raw)
           if (current === generation.current) {
             markLocal(data.edition === 'local')
+            setStation(data.station ?? null)
+            setNetwork(!!data.network)
+            setPairing(false)
             setError('')
             csrf.current = data.csrf_token
             signedIn.current = true
@@ -58,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           )
             return
           if (error instanceof ApiError && error.local) markLocal(true)
+          setPairing(error instanceof ApiError && error.pairing)
           reset()
           setError(
             error instanceof ApiError && error.status === 401 && !error.local
@@ -142,7 +149,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
   return (
     <AuthContext.Provider
-      value={{ user, local, loading, error, refresh, login, logout, request, clear }}
+      value={{
+        user,
+        local,
+        station,
+        network,
+        pairing,
+        loading,
+        error,
+        refresh,
+        login,
+        logout,
+        request,
+        clear,
+      }}
     >
       {children}
     </AuthContext.Provider>

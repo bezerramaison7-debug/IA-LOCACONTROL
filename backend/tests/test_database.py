@@ -17,7 +17,9 @@ def test_migration_upgrade_idempotency_downgrade_and_reupgrade(migration_config)
     engine = build_engine(url)
     try:
         with engine.connect() as connection:
-            assert MigrationContext.configure(connection).get_current_heads() == ("0011_drafts",)
+            assert MigrationContext.configure(connection).get_current_heads() == (
+                "0013_audit_station",
+            )
             assert set(inspect(connection).get_table_names()) == {
                 "alembic_version",
                 "users",
@@ -64,7 +66,9 @@ def test_migration_upgrade_idempotency_downgrade_and_reupgrade(migration_config)
             assert MigrationContext.configure(connection).get_current_heads() == ()
         command.upgrade(migration_config, "head")
         with engine.connect() as connection:
-            assert MigrationContext.configure(connection).get_current_heads() == ("0011_drafts",)
+            assert MigrationContext.configure(connection).get_current_heads() == (
+                "0013_audit_station",
+            )
     finally:
         engine.dispose()
 

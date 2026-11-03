@@ -49,6 +49,19 @@ Não coberto: Windows (instalador, pendrive/HD externo como pasta de backups ou 
 
 Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
 
+## 2026-11-03 — SHA `a01dce3` (P1-D, rede local e pareamento)
+
+Cabeça da branch `p1/d-rede` (PR sobre `p1/c-protecao`). Executado no **Linux da nuvem**, não no Windows; bancos, pastas e servidores temporários. As "estações" são clientes que chegam ao servidor pelo endereço de rede do contêiner (não loopback), com cookies próprios.
+
+| Verificação | Resultado |
+| --- | --- |
+| `ruff check backend scripts/smoke.py scripts/e2e-auth.py` / `ruff format --check backend` | aprovado; 110 arquivos formatados |
+| `pytest backend/tests` | 208 passaram, 1 pulado (ACL do Windows), 1 aviso de depreciação. Novos: 11 em `test_stations.py` e 5 em `test_network_server.py` (servidor real `python -m app.server` em modo rede: edição concorrente, retirada concorrente da mesma unidade, confirmação concorrente, backup durante escritas de duas estações, queda e retorno do principal) |
+| Frontend: `lint`, `format:check`, Vitest, `build` | sem erros; 82 testes em 18 arquivos; build concluído (aviso conhecido de chunk acima de 500 kB) |
+| E2E (`scripts/e2e-auth.py`) | 36 (edição com login) + 4 (edição local) + 1 (rede: principal em 127.0.0.1 e estação pelo endereço de rede — pareamento, limites da estação, revogação) |
+| Smoke (`scripts/smoke.py`) | aprovado |
+
+Não coberto: estações Windows reais, firewall do Windows, acesso por nome do computador, IPv6, desempenho com muitas estações.
 ## 2026-11-03 — SHA `9156985` (P1-C após a auditoria: A3 limites de espaço e M2 durabilidade)
 
 Cabeça da branch `p1/c-protecao` (PR #6) depois das correções autorizadas pela diretiva do arquiteto de 2026-11-03. Bateria executada num **checkout limpo e destacado nesse SHA** (`git worktree add --detach`, `npm ci` do zero), no **Linux da nuvem**, não no Windows; bancos, pastas e servidores temporários.
@@ -64,5 +77,23 @@ Cabeça da branch `p1/c-protecao` (PR #6) depois das correções autorizadas pel
 Discos nos testes: a suíte usa um disco simulado (1 TB, 900 GB livres) por padrão, para não depender da máquina; `test_storage.py` simula discos pequenos, grandes e cheios. No E2E, as bases temporárias recebem limites reduzidos (1 GB livre, 0 %), porque o disco desta máquina (252 GB, 29 GB livres) **não atende** a reserva padrão de 15 % — com o padrão, o backup é recusado, como projetado. Medição do M1 em `docs/P1_SQLITE_CONCORRENCIA.md`.
 
 Pendente no Windows: limites com discos reais, `fsync` no NTFS, pendrive/HD externo, medição do M1 com `scripts/measure_backup_lock.py`. Não declarar homologado.
+
+Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
+
+## 2026-11-03 — SHA `f106d08` (P1-D após a auditoria: A1, A2, M4, M5 e importação só no principal)
+
+Cabeça da branch `p1/d-rede` (PR #7), que incorpora o P1-C validado em `9156985`. Bateria num **checkout limpo e destacado nesse SHA**, no **Linux da nuvem**, não no Windows; as "estações" são clientes pelo endereço de rede do contêiner, com cookies próprios.
+
+| Verificação | Resultado |
+| --- | --- |
+| `ruff check` / `ruff format --check` | aprovado |
+| `pytest backend/tests` | 235 passaram, 1 pulado (ACL do Windows). Novos: `test_station_rotation.py` (4: cópia detectada nos dois sentidos, sem falso positivo para resposta perdida, navegador ocioso e abas em paralelo, oferta a cada sessão), `test_registry_resilience.py` (8: fsync e cópia, recuperação pela `.bak` preservando revogação, quatro formas de arquivo ilegível com o principal funcionando, reparo auditado), `test_station_identity.py` (2), importação só no principal (`test_stations.py`), servidor real com data comercial controlada e cópia de credencial detectada (`test_network_server.py`, 7) |
+| Frontend: `npm ci`, lint, `format:check`, Vitest, `build` | sem erros; 85 testes em 18 arquivos |
+| E2E (`scripts/e2e-auth.py`) | 36 + 4 + 1 (rede) |
+| Smoke | aprovado |
+
+Correção de registro: a validação de `a01dce3` (acima, 208 passaram) dependia do horário — `test_two_stations_withdraw_the_same_unit_at_once` só passava entre 21h e 24h de Brasília (achado M5). Desde `e7a552d` o servidor do teste roda com a data comercial fixada; a suíte passou nesta máquina em duas execuções completas na manhã de 2026-11-03 (UTC−3), fora da janela de 21h–24h em que o teste antigo passava, e o teste novo `test_the_server_uses_the_controlled_business_date` prova o controle (2 diárias → VENCENDO, 10 → ATIVO). Durante o desenvolvimento, o commit `39c8e02` (A1) foi feito com quatro testes de atualização de bases antigas falhando, corrigidos em `0e52a49`.
+
+Pendente no Windows: duas estações reais, rotação por horas sem revogação indevida, cópia de cookies entre PCs, `fsync` do `stations.json` no NTFS, firewall, acesso pelo nome do computador. Não declarar homologado.
 
 Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.

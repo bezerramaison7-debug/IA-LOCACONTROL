@@ -2,9 +2,9 @@
 
 Order: data folder (created only on a first installation) -> exclusive installation lock ->
 missing-database check -> schema upgrade with a prior database copy -> first-access account
-(login edition only) -> uvicorn on 127.0.0.1. A second instance over the same data folder
-exits with EXIT_ALREADY_RUNNING before touching the database; an unavailable data folder or a
-vanished database exits with EXIT_DATA_UNAVAILABLE.
+(login edition only) -> uvicorn on 127.0.0.1 (all interfaces only in the network mode, ADR-025).
+A second instance over the same data folder exits with EXIT_ALREADY_RUNNING before touching the
+database; an unavailable data folder or a vanished database exits with EXIT_DATA_UNAVAILABLE.
 """
 
 import argparse
@@ -156,6 +156,15 @@ def prepare(settings: Settings) -> bool:
     return created
 
 
+def listen_address(settings: Settings) -> str:
+    """The store network only when the network mode was chosen (local edition, ADR-025)."""
+    if settings.local_mode and settings.network_mode:
+        return "0.0.0.0"
+    if settings.network_mode:
+        print("LOCACONTROL_NETWORK_MODE exige LOCACONTROL_LOCAL_MODE; ignorado.", flush=True)
+    return "127.0.0.1"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Servidor do LocaControl")
     parser.add_argument("--port", type=int, default=8000)
@@ -186,11 +195,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         own = [f"http://127.0.0.1:{args.port}", f"http://localhost:{args.port}"]
         settings.allowed_origins += [o for o in own if o not in settings.allowed_origins]
+        host = listen_address(settings)
+        if host != "127.0.0.1":
+            print(
+                f"Modo rede: estações pareadas acessam este computador na porta {args.port}.",
+                flush=True,
+            )
         import uvicorn
 
         from app.main import create_app
 
-        uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port)
+        uvicorn.run(create_app(settings), host=host, port=args.port)
         return 0
     finally:
         lock.close()

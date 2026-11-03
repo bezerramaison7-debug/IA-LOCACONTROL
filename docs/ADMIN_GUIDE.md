@@ -116,6 +116,34 @@ Os formulários longos — orçamento (novo ou em edição), contrato direto (no
 - Se o servidor estiver fora do ar, o formulário continua aberto e a linha abaixo dele avisa "Rascunho não salvo agora"; o sistema tenta de novo sozinho.
 - Na edição local, a expiração ou a renovação da sessão não fecha o formulário: o sistema abre uma sessão nova sem sair da tela. Uma leitura é repetida uma vez; um envio nunca é repetido sozinho — aparece "A sessão deste computador foi renovada automaticamente. Nada foi gravado: confira os dados e envie novamente."
 
+## 4.2 Rede da loja: computador principal e estações
+
+Na edição local com **modo rede** (`LOCACONTROL_NETWORK_MODE=true`, escolhido na instalação do computador principal), outros computadores da loja usam a mesma base, sempre pelo computador principal: o banco nunca é aberto pela rede. Sem o modo rede, o servidor só atende o próprio computador.
+
+**Parear uma estação** (uma vez por computador, sem senha):
+
+1. No computador principal, abra **Gestão → Estações da rede** e clique em **Gerar código de pareamento**. O código (por exemplo `K7PA-3QMR`) vale por 10 minutos, para uma única estação; 5 tentativas erradas o cancelam.
+2. Na estação, abra o navegador no endereço do principal (por exemplo `http://192.168.0.10:8000` ou `http://NOME-DO-PC:8000`). Aparece **Conectar este computador à loja**: informe o **Nome desta estação** (Balcão 1, Depósito…) e o **Código de pareamento** e clique em **Conectar à loja**.
+3. Pronto: a estação abre a Visão geral e, no rodapé do menu, mostra "Estação <nome> · rede da loja". O acesso dela fica guardado no navegador daquele computador.
+
+**O que só o computador principal faz**: configurar, baixar, importar e restaurar backups; gerar códigos e revogar estações. As estações fazem todo o atendimento, acompanham a proteção, verificam backups e podem fazer um backup na hora.
+
+**Revogar**: em **Estações da rede**, **Revogar** na estação desejada e confirme. O acesso termina na hora; o computador volta à tela de pareamento. A lista mostra quando cada estação foi pareada, o último acesso e o endereço; o **Histórico da rede** mostra pareamentos, tentativas recusadas e revogações. Na **Auditoria**, as ações de uma estação aparecem como `operador local · estação <nome> (<código>) · instalação <código>`.
+
+**Reuso de credencial**: o acesso de cada estação é trocado sozinho a cada 15 minutos de uso e a cada vez que ela abre o sistema. Se o mesmo acesso for usado por dois computadores (uma cópia), o sistema revoga a estação, mostra o aviso "Credencial da estação … usada por mais de um computador" em **Estações da rede** e na **Visão geral**, com o endereço que denunciou a cópia. Verifique os computadores da loja e pareie de novo a estação legítima. Isso detecta e corta a cópia; não impede que ela seja usada até a troca seguinte.
+
+**Lista de estações ilegível**: se o arquivo `stations.json` estragar, o sistema usa a cópia `stations.json.bak` e avisa. Se as duas estragarem, este computador continua funcionando normalmente, mas todas as estações ficam bloqueadas e aparece o reparo em **Estações da rede**: recoloque o `stations.json` de uma cópia da pasta de dados e reinicie, ou digite `RECOMEÇAR ESTAÇÕES` para começar uma lista nova (os arquivos atuais ficam guardados e todas as estações precisam ser pareadas de novo).
+
+**Importação do Excel**: enviar, conferir e confirmar planilhas só neste computador principal; as estações consultam as importações.
+
+**Identificação**: a página mostra três códigos diferentes — a **base de dados da loja** (vai junto com os backups), **este servidor** (o computador principal) e cada **estação**.
+
+**Restauração de backup e estações**: a lista de estações não faz parte do backup. Restaurar um backup antigo não reativa uma estação revogada nem desconecta as pareadas depois dele (elas só abrem uma sessão nova sozinhas). Se o computador principal for reinstalado do zero, pareie as estações de novo.
+
+**Com o principal desligado** as estações ficam sem acesso; o formulário aberto continua na tela e o rascunho volta a ser salvo quando o principal retorna.
+
+**Segurança da rede**: a comunicação é HTTP sem criptografia, aceita só de endereços de rede privada (192.168.x, 10.x, 172.16–31.x). Quem conseguir capturar o tráfego da rede da loja poderia copiar o acesso de uma estação: mantenha a rede da loja fechada (Wi-Fi com senha, sem convidados) e revogue qualquer estação perdida ou suspeita.
+
 ## 5. Estoque e contratos
 
 Retirada, devolução e renovação movimentam o estoque automaticamente. Enquanto um equipamento ou uma quantidade está com o cliente por contrato, o sistema recusa tirá-lo de "Locado" pela tela de estoque: registre a devolução no contrato. Itens devolvidos como avariados vão para Manutenção e voltam a Disponível pelo botão **Liberar** em **Operação → Manutenção**.

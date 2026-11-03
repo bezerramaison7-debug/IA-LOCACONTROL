@@ -4,6 +4,7 @@ from threading import Barrier
 
 import pytest
 from alembic import command
+from legacy import legacy_account
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -460,12 +461,8 @@ def test_upgrade_0004_to_head_preserves_account_and_grants(migration_config):
     command.upgrade(migration_config, "0004_imports")
     engine = build_engine(migration_config.attributes["database_url"])
     try:
-        with Session(engine) as db:
-            user = IdentityService(db, local=True).create_user(
-                "existing", "Existing", PASSWORD, ["ADMINISTRADOR"], must_change=False
-            )
-            original_hash, user_id = user.password_hash, user.id
-            db.commit()
+        # Written with that revision's columns, as an old installation had it.
+        user_id, original_hash = legacy_account(engine, "existing", "Existing", PASSWORD)
         command.upgrade(migration_config, "head")
         command.check(migration_config)
         with Session(engine) as db:

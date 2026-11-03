@@ -58,6 +58,10 @@ class AuthSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[int] = mapped_column(Integer)
     expires_at: Mapped[int] = mapped_column(Integer, index=True)
+    # Network edition (ADR-025): the paired station this session belongs to; None is this
+    # computer. Checked against the station registry at every request, so a session restored
+    # from a backup never outlives a revocation.
+    station_id: Mapped[str | None] = mapped_column(String(36), index=True)
 
 
 class LoginThrottle(Base):
@@ -77,3 +81,6 @@ class AuditLog(Base):
     entity: Mapped[str] = mapped_column(String(40))
     entity_id: Mapped[str | None] = mapped_column(String(80))
     changes: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Network edition (M4): the paired station the action came from; None is the main computer
+    # (or the login-based edition). The label is for people; this is what filters rely on.
+    station_id: Mapped[str | None] = mapped_column(String(36), index=True)

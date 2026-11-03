@@ -18,6 +18,10 @@ export const sessionSchema = z.object({
   /** "local": no login, users or portal (ADR-023). Absent means the login-based edition. */
   edition: z.string().optional(),
   installation_id: z.string().optional(),
+  /** Local edition (ADR-025): this server, the network mode and the calling station. */
+  server_id: z.string().optional(),
+  network: z.boolean().optional(),
+  station: z.object({ id: z.string(), name: z.string() }).nullable().optional(),
 })
 export type SessionData = z.infer<typeof sessionSchema>
 export const roleSchema = z.object({
@@ -55,6 +59,8 @@ export class ApiError extends Error {
     public local = false,
     /** "csrf": the session changed (renewed in another tab); fetch the current token. */
     public retry = '',
+    /** A computer of the store network that can be paired with a code (ADR-025). */
+    public pairing = false,
   ) {
     super(message)
   }
@@ -85,6 +91,7 @@ export async function send(path: string, csrf: string, method = 'GET', body?: un
       typeof error.detail === 'string' ? error.detail : 'Não foi possível concluir a ação.',
       response.headers.get('X-LocaControl-Edition') === 'local',
       response.headers.get('X-LocaControl-Retry') || '',
+      response.headers.get('X-LocaControl-Pairing') === 'available',
     )
   }
   return response.status === 204 ? undefined : response.json()

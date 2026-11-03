@@ -98,7 +98,7 @@ function download(report: unknown, id: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 export function Imports() {
-  const { request, user } = useAuth()
+  const { request, user, station } = useAuth()
   const cache = useQueryClient()
   const [upload, setUpload] = useState<z.infer<typeof uploadSchema> | null>(null)
   const [file, setFile] = useState<File | null>(null)
@@ -116,7 +116,8 @@ export function Imports() {
   const [acknowledged, setAcknowledged] = useState(false)
   const [offset, setOffset] = useState(0)
   const [historyOffset, setHistoryOffset] = useState(0)
-  const canWrite = !!user?.permissions.includes('imports.write')
+  // Sending, previewing and confirming happen on the main computer only (2026-11-03).
+  const canWrite = !!user?.permissions.includes('imports.write') && !station
   const fields = useQuery({
     queryKey: ['import-fields'],
     queryFn: async () => fieldsSchema.parse(await request('/imports/fields')),
@@ -166,6 +167,12 @@ export function Imports() {
             estoque e preços. O histórico de contratos e renovações da planilha ainda não é
             convertido e fica preservado no arquivo original.
           </p>
+          {station && (
+            <div className="quote-notice" role="note">
+              <strong>Enviar e confirmar importações só no computador principal.</strong>
+              <span>Desta estação dá para consultar os lotes e os relatórios de importação.</span>
+            </div>
+          )}
           {canWrite && (
             <form
               className="form-stack"

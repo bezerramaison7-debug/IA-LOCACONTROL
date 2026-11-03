@@ -44,7 +44,7 @@ def test_backup_set_contains_database_files_and_manifest(client, admin, base):
     person, item = base
     document(client, admin, person, item)
     created = backup(client, admin)
-    assert created["revision"] == "0011_drafts" and created["kind"] == "manual"
+    assert created["revision"] == "0013_audit_station" and created["kind"] == "manual"
     overview = client.get("/api/backups").json()
     assert [entry["name"] for entry in overview["items"]] == [created["name"]]
     # Instalação nova (sem configuração salva): protegida desde o início, a cada 20 minutos.
@@ -62,7 +62,7 @@ def test_backup_set_contains_database_files_and_manifest(client, admin, base):
     assert [n for n in names if n.startswith("documents/")] == [
         "documents/" + stored_documents(client)[0]
     ]
-    assert manifest["revision"] == "0011_drafts" and manifest["format"] == 1
+    assert manifest["revision"] == "0013_audit_station" and manifest["format"] == 1
     assert manifest["files"]["locacontrol.db"] == hashlib.sha256(database).hexdigest()
     report = client.post(f"/api/backups/{created['name']}/verify", headers=admin[1]).json()
     assert report["ok"] is True and report["users"] == 1 and report["files"] == 2

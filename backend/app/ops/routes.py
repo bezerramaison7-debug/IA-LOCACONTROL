@@ -14,10 +14,13 @@ from app.auth.security import verify_password
 from app.auth.service import IdentityService
 from app.contracts.models import AppSetting
 from app.masters.schemas import Input
+from app.network.stations import principal_only
 from app.ops.backup import SETTING_KEY, BackupManager
 
 router = APIRouter(prefix="/api/backups", tags=["Backup e restauração"])
 Manage = Annotated[User, Depends(require("backups.manage"))]
+# Restore, configuration, download and import: the main computer only (ADR-025).
+Principal = Annotated[None, Depends(principal_only)]
 
 
 class BackupConfig(Input):
@@ -81,7 +84,7 @@ def status(request: Request, db: DB, user: Manage):
 
 
 @router.put("/config")
-def configure(request: Request, payload: BackupConfig, db: DB, user: Manage):
+def configure(request: Request, payload: BackupConfig, db: DB, user: Manage, _: Principal):
     backups = manager(request)
     before = backups.config(db)
     values = payload.model_dump()
@@ -126,7 +129,9 @@ def run_now(request: Request, db: DB, user: Manage):
 
 
 @router.post("/import", status_code=201)
-async def import_set(request: Request, db: DB, user: Manage, file: Annotated[UploadFile, File()]):
+async def import_set(
+    request: Request, db: DB, user: Manage, _: Principal, file: Annotated[UploadFile, File()]
+):
     """Brings a set kept on another disk into the backup folder, verified, ready to restore."""
     backups = manager(request)
     config = backups.config(db)
@@ -155,14 +160,14 @@ def verify(request: Request, name: str, db: DB, user: Manage):
 
 
 @router.get("/{name}/download")
-def download(request: Request, name: str, db: DB, user: Manage):
+def download(request: Request, name: str, db: DB, user: Manage, _: Principal):
     backups = manager(request)
     path = backups.path(backups.config(db), name)
     return FileResponse(path, media_type="application/zip", filename=name)
 
 
 @router.post("/{name}/restore")
-def restore(request: Request, name: str, payload: RestoreInput, db: DB, user: Manage):
+def restore(request: Request, name: str, payload: RestoreInput, db: DB, user: Manage, _: Principal):
     backups = manager(request)
     config = backups.config(db)
     backups.path(config, name)

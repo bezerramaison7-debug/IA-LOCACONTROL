@@ -42,8 +42,10 @@ class DraftInput(Input):
 
 
 def owner(request: Request, user: User) -> str:
-    """Drafts belong to whoever typed them. The network edition adds the station."""
-    return f"user:{user.id}"
+    """Drafts belong to whoever typed them: the account and, in the network edition, the
+    station (two stations never see or overwrite each other's draft)."""
+    station = getattr(request.state, "station", None)
+    return f"user:{user.id}" + (f":station:{station['id']}" if station else "")
 
 
 def allowed(user: User, kind: str):

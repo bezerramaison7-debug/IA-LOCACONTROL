@@ -27,7 +27,7 @@ Opções, em ordem de preferência (nenhuma aplicada):
 
 `POST /api/imports/{id}/confirm` roda numa única transação `BEGIN IMMEDIATE` (savepoint por linha). Durante toda a confirmação as demais gravações esperam; com mais de 5 s, recebem 503. A importação do histórico real (IMP-04B) tende a ser longa.
 
-Decisão do arquiteto (2026-11-03): **confirmação só no computador principal**; estações consultam; sem importação concorrente de histórico nesta fase. Proposta para o IMP-04B, a decidir antes de implementar:
+Decisão do arquiteto (2026-11-03): **confirmação só no computador principal**; estações consultam; sem importação concorrente de histórico nesta fase. **Aplicado no P1-D**: envio, nova conversão, prévia e confirmação respondem 403 na estação. Isso elimina importações iniciadas por estações, mas **não** encurta a transação: enquanto o principal confirma uma planilha grande, as estações continuam esperando (e podem receber 503 depois de 5 s). A transação não foi alterada; segue a proposta abaixo. Proposta para o IMP-04B, a decidir antes de implementar:
 
 - confirmação em **lotes** (por exemplo 500 linhas por transação), com progresso e retomada idempotente pela origem (`import_origins` já impede repetir uma linha), liberando as estações entre lotes; **ou**
 - **janela de manutenção** explícita (como a restauração): o sistema avisa as estações, conclui a importação e volta;

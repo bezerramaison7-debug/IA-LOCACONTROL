@@ -500,7 +500,7 @@ export function RestoreDialog({
 }
 
 export function Backups() {
-  const { request, clear } = useAuth()
+  const { request, clear, station } = useAuth()
   const cache = useQueryClient()
   const toast = useToast()
   const [failure, setFailure] = useState('')
@@ -557,34 +557,48 @@ export function Backups() {
           >
             <ProtectionStatus data={query.data} />
           </Card>
-          <Card
-            title="Backup automático"
-            description="Frequência, retenção, pasta de destino e segunda cópia. A alteração é auditada."
-          >
-            <div className="padded">
-              <ConfigForm
-                key={JSON.stringify(query.data.config)}
-                data={query.data}
-                onSaved={(next) => {
-                  cache.setQueryData(['backups', 'overview'], next)
-                  toast('Configuração de backup salva.')
-                }}
-              />
+          {station ? (
+            <div className="quote-notice" role="note">
+              <strong>
+                Configurar, baixar, importar e restaurar backups só no computador principal.
+              </strong>
+              <span>
+                Desta estação ({station.name}) dá para acompanhar a proteção, fazer um backup agora
+                e verificar os conjuntos.
+              </span>
             </div>
-          </Card>
-          <Card
-            title="Recuperar backup de outro disco"
-            description="Traz para a pasta de backups um conjunto guardado fora dela."
-          >
-            <div className="padded">
-              <ImportForm
-                onImported={(name) => {
-                  toast('Backup conferido e importado: ' + name + '. Ele já aparece na lista.')
-                  void cache.invalidateQueries({ queryKey: ['backups', 'overview'] })
-                }}
-              />
-            </div>
-          </Card>
+          ) : (
+            <>
+              <Card
+                title="Backup automático"
+                description="Frequência, retenção, pasta de destino e segunda cópia. A alteração é auditada."
+              >
+                <div className="padded">
+                  <ConfigForm
+                    key={JSON.stringify(query.data.config)}
+                    data={query.data}
+                    onSaved={(next) => {
+                      cache.setQueryData(['backups', 'overview'], next)
+                      toast('Configuração de backup salva.')
+                    }}
+                  />
+                </div>
+              </Card>
+              <Card
+                title="Recuperar backup de outro disco"
+                description="Traz para a pasta de backups um conjunto guardado fora dela."
+              >
+                <div className="padded">
+                  <ImportForm
+                    onImported={(name) => {
+                      toast('Backup conferido e importado: ' + name + '. Ele já aparece na lista.')
+                      void cache.invalidateQueries({ queryKey: ['backups', 'overview'] })
+                    }}
+                  />
+                </div>
+              </Card>
+            </>
+          )}
           <Card
             title="Backups disponíveis"
             description={
@@ -637,29 +651,33 @@ export function Backups() {
                         >
                           {busy === 'verify' + item.name ? 'Verificando…' : 'Verificar'}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          disabled={busy !== null}
-                          aria-label={'Baixar ' + item.name}
-                          onClick={() =>
-                            run(
-                              'download' + item.name,
-                              () => downloadBackup(item.name),
-                              'Não foi possível baixar o backup.',
-                            )
-                          }
-                        >
-                          {busy === 'download' + item.name ? 'Baixando…' : 'Baixar'}
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          disabled={busy !== null}
-                          aria-label={'Restaurar ' + item.name}
-                          onClick={() => setRestoring(item)}
-                        >
-                          <TriangleAlert size={16} aria-hidden="true" />
-                          Restaurar
-                        </Button>
+                        {!station && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              disabled={busy !== null}
+                              aria-label={'Baixar ' + item.name}
+                              onClick={() =>
+                                run(
+                                  'download' + item.name,
+                                  () => downloadBackup(item.name),
+                                  'Não foi possível baixar o backup.',
+                                )
+                              }
+                            >
+                              {busy === 'download' + item.name ? 'Baixando…' : 'Baixar'}
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              disabled={busy !== null}
+                              aria-label={'Restaurar ' + item.name}
+                              onClick={() => setRestoring(item)}
+                            >
+                              <TriangleAlert size={16} aria-hidden="true" />
+                              Restaurar
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
