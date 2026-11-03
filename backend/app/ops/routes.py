@@ -34,6 +34,11 @@ class BackupConfig(Input):
     directory: str = Field(default="", max_length=260)
     # Optional second copy of each set, ideally on another disk; empty turns it off.
     mirror_directory: str = Field(default="", max_length=260)
+    # Storage limits (A3): cap of the backup folder; free space kept on its disk, the larger of
+    # the absolute and the relative floor.
+    max_total_gb: int = Field(default=10, ge=1, le=100_000)
+    min_free_gb: int = Field(default=10, ge=0, le=100_000)
+    min_free_percent: int = Field(default=15, ge=0, le=90)
 
     @field_validator("directory", "mirror_directory")
     @classmethod

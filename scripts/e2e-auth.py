@@ -1,8 +1,10 @@
 """Real browser/API tests with isolated SQLite and fixture identities only."""
 
+import json
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -34,6 +36,35 @@ def own_address():
         except OSError:
             return None
     return None if address.startswith("127.") else address
+
+
+def relaxed_backup_limits(url):
+    """Temporary E2E databases only: the machine running the suite may not have the default
+    free-space reserve (10 GB or 15 % of the disk, A3); the limits are tested in pytest."""
+    path = url.removeprefix("sqlite:///")
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES ('backup', ?, 0)",
+            (
+                json.dumps(
+                    {
+                        "enabled": False,
+                        "frequency": "20min",
+                        "time": "22:00",
+                        "keep": 14,
+                        "directory": "",
+                        "mirror_directory": "",
+                        "max_total_gb": 10,
+                        "min_free_gb": 1,
+                        "min_free_percent": 0,
+                    }
+                ),
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def run_suite(
@@ -118,6 +149,7 @@ def main():
         config = Config(str(ROOT / "backend/alembic.ini"))
         config.attributes["database_url"] = url
         command.upgrade(config, "head")
+        relaxed_backup_limits(url)
         settings = Settings(_env_file=None, database_url=url)
         run_local(
             "bootstrap",
@@ -179,6 +211,7 @@ def main():
         local_url = f"sqlite:///{(Path(folder) / 'local.db').as_posix()}"
         config.attributes["database_url"] = local_url
         command.upgrade(config, "head")
+        relaxed_backup_limits(local_url)
         local_port = free_port()
         local_base = f"http://127.0.0.1:{local_port}"
         local_env = {
@@ -209,6 +242,7 @@ def main():
             network_url = f"sqlite:///{(Path(folder) / 'network.db').as_posix()}"
             config.attributes["database_url"] = network_url
             command.upgrade(config, "head")
+            relaxed_backup_limits(network_url)
             network_port = free_port()
             network_base = f"http://127.0.0.1:{network_port}"
             network_env = {

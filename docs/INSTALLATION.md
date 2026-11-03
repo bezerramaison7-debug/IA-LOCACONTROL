@@ -138,6 +138,8 @@ Com `--prepare`, o servidor só prepara o banco e encerra.
 
 **Modo rede (P1-D, ADR-025)**: com `LOCACONTROL_LOCAL_MODE=true` e `LOCACONTROL_NETWORK_MODE=true` o servidor escuta em todas as interfaces (sem o modo rede, só em `127.0.0.1`) e aceita estações pareadas da rede privada. Opcionais: `LOCACONTROL_STATION_NETWORKS` (redes extras, por exemplo `["100.64.0.0/10"]`) e `LOCACONTROL_STATION_HOSTS` (nomes extras pelos quais as estações chegam ao servidor, além do IP e do nome do computador). A lista de estações fica em `stations.json` na pasta de dados, fora dos backups: copie a pasta de dados inteira para levar o principal para outro computador sem parear de novo. A regra de firewall do Windows limitada à rede local e a escolha "Usar neste computador" × "Conectar à loja" ficam para o instalador (P1-E).
 
+**Espaço para backups (A3)**: o backup automático vem ligado (a cada 20 minutos) e só grava se o disco da pasta de backups continuar com pelo menos 10 GB ou 15 % livres (o maior), com teto de 10 GB para a pasta. Planeje a pasta de backups em disco com folga; em discos grandes e cheios ajuste os limites em **Gestão → Backups**. A cópia `pre-upgrade-*.db` que o servidor faz antes de atualizar a estrutura do banco ainda não passa por esses limites.
+
 ## 7. Uso por outros computadores da rede
 
 O atalho de início não libera acesso pela rede. Para isso é preciso, no mínimo:
