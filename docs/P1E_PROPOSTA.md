@@ -78,9 +78,9 @@ Uma configuração salva com o campo antigo `min_free_percent` passa a usá-lo c
 
 ## 4. Qualidade e CI
 
-`.github/workflows/ci.yml` (manual e no PR do P1-E; o repositório é privado e o Windows consome minutos em dobro):
+`.github/workflows/ci.yml` (manual e a cada push em `master` e `p1/**`; o repositório é privado e o Windows consome minutos em dobro). Três jobs independentes, para uma falha não esconder as outras: Linux; Windows — testes do backend; Windows — instalador (`windows-2022`). Resultados por SHA em `VALIDATION.md`:
 
 - **Linux**: ruff, pytest, frontend (lint, formato, Vitest, build), E2E e smoke.
-- **Windows** (`windows-latest`): pytest completo (inclui `msvcrt` e ACL), testes de certificado com o verificador do Windows, PyInstaller, Inno Setup, **instalação silenciosa** como principal com rede, início, saúde em HTTP local e HTTPS com a CA confiada, **atualização** preservando os dados, **desinstalação** preservando os dados, e artefato com o instalador e os logs.
+- **Windows** (`windows-2022`): pytest completo (inclui `msvcrt`, DPAPI e ACL), Name Constraints com o verificador do Windows (`scripts/ci/name-constraints.ps1`), PyInstaller, Inno Setup, **instalação silenciosa** como principal com rede (`scripts/ci/windows-install-test.ps1`), início, saúde em HTTP local, HTTP ausente na rede, HTTPS recusado antes da confiança, `conectar` com código errado (nada instalado) e certo (CA na Raiz da máquina, HTTPS validado pelo Windows), `desconectar`, **atualização** preservando os dados, **desinstalação** preservando os dados, e artefato com o instalador e os logs.
 
 Exige máquina física (não substituível pela CI): Windows limpo sem ferramentas de desenvolvimento, duas estações reais na mesma rede, navegadores (Edge, Chrome, Firefox) diante da CA e das Name Constraints, antivírus, pendrive/HD externo, queda de energia, uso por horas. **A CI Windows não é homologação.**

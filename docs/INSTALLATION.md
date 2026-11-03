@@ -8,7 +8,53 @@ Guia para instalar o LocaControl em um computador Windows da locadora e deixá-l
 - Os dados ficam na pasta `data\` da instalação: banco (`locacontrol.db`), planilhas importadas, contratos em PDF, arquivos fiscais de simulação, backups e logs.
 - **Não é uma instalação na internet.** O atalho de início atende somente o próprio computador. Uso por outros computadores da rede exige HTTPS e ajustes descritos na seção 7; publicação na internet é uma etapa futura que não foi feita.
 
-## 2. Requisitos
+## 1.1 Instalador do Windows (edição local, P1-E, ADR-026)
+
+> Situação: implementado e testado em máquinas descartáveis da CI do GitHub (Windows Server 2022). **Não homologado em computador físico da loja** — ver `docs/VALIDATION.md`.
+
+O arquivo `LocaControl-Setup-<versão>.exe` instala tudo (programa, runtime Python, interface compilada, migrations); não exige Python, Node nem internet. Precisa de administrador (cria a regra de firewall e, na estação, instala o certificado da loja).
+
+| Item | Onde |
+| --- | --- |
+| Programa | `C:\Program Files\LocaControl` (trocado a cada atualização) |
+| Dados | `C:\ProgramData\LocaControl` (banco, documentos, backups, logs, `.env`, `stations.json`, `tls\`) — nunca apagados pela atualização nem pela desinstalação automática |
+| Escolhas do instalador | `HKLM\Software\LocaControl` (Modo, Rede, Servidor) e as linhas `LOCACONTROL_LOCAL_MODE`/`LOCACONTROL_NETWORK_MODE` do `.env` (as outras linhas do `.env` são preservadas) |
+
+**"Usar neste computador"** (computador principal, onde ficam os dados). Opção "Permitir que outros computadores da loja usem este": liga o modo rede, cria a regra de firewall "LocaControl (HTTPS da loja)" (entrada TCP 8443, só da sub-rede local, perfis privado e domínio, só para o `LocaControl.exe`) e, no primeiro início, a autoridade certificadora local. Atalhos: menu Iniciar e área de trabalho ("LocaControl", abre o navegador) e Inicializar ("LocaControl (servidor)", sobe o servidor ao entrar no Windows).
+
+**"Conectar à loja"** (estação). No principal: **Gestão → Estações da rede → Gerar código** (26 caracteres, 10 minutos). Na estação, o instalador pede o endereço do principal (IP ou nome) e o código, e então:
+
+1. baixa o certificado da loja e a prova do principal sem confiar ainda na conexão;
+2. aceita o certificado **só se a prova conferir com o código** — código errado, endereço errado ou interceptação: nada é instalado (mensagem de erro e detalhes em `C:\ProgramData\LocaControl\logs\comandos.log`);
+3. instala o certificado em "Autoridades de Certificação Raiz Confiáveis" do computador e abre o navegador em `https://<principal>:8443`, já com o código preenchido, para dar nome à estação.
+
+Depois, o atalho "LocaControl" da estação abre o endereço da loja. Edge e Chrome usam a confiança do Windows; o Firefox precisa da política `security.enterprise_roots.enabled`.
+
+**Atualizar**: execute o instalador da versão nova. Ele para o servidor, troca o programa, reaproveita as escolhas anteriores e preserva `.env` e dados; o servidor faz a cópia `pre-upgrade-*.db` antes de atualizar o banco (seção 6.1).
+
+**Desinstalar** (Configurações → Aplicativos): para o servidor, remove a regra de firewall e, na estação, o certificado da loja que ela instalou. Os dados ficam em `C:\ProgramData\LocaControl`; o desinstalador pergunta se deseja excluí-los e pede uma **segunda confirmação**. Na desinstalação silenciosa os dados nunca são excluídos.
+
+**Instalação silenciosa** (implantação, CI):
+
+```powershell
+LocaControl-Setup-0.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /MODO=principal /REDE=1
+LocaControl-Setup-0.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /MODO=estacao /SERVIDOR=192.168.0.10 /CODIGO=XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XX
+```
+
+**`LocaControl.exe` pela linha de comando**: `abrir` (padrão), `servir [--port 8000] [--https-port 8443]`, `conectar --servidor <endereço> --codigo <código> [--porta 8443] [--sem-navegador]` (código de saída 2 se a identidade não conferir), `desconectar`, `parar`.
+
+**Gerar o instalador** (desenvolvimento, Windows): `scripts\setup.ps1`, `pip install pyinstaller==6.22.3` no `.venv`, `npm --prefix frontend run build`, Inno Setup 6 instalado, e então `scripts\installer.ps1 [-AppVersion 0.1.0]` → `dist-installer\LocaControl-Setup-<versão>.exe`.
+
+### Recuperação depois de perder o computador principal
+
+1. Instale o LocaControl no computador novo com "Usar neste computador" (e a rede, se houver estações). É criada uma **nova** autoridade certificadora; a antiga não é necessária.
+2. Restaure o backup mais recente (Gestão → Backups → importar o `.zip` de outro disco e restaurar; `ADMIN_GUIDE.md` 4). O backup traz os dados, não o certificado nem a lista de estações.
+3. Em cada estação, execute o instalador de novo com "Conectar à loja" e um código gerado no principal novo. O certificado antigo que essa estação tinha instalado é removido e o novo, instalado.
+4. Se houver suspeita de que o computador antigo foi roubado (e não apenas danificado), confira que nenhuma estação ainda confia no certificado antigo: `certutil -store Root` lista as autoridades; remova a antiga com `certutil -delstore Root <impressão>`.
+
+**Trocar de computador principal mantendo as estações pareadas**: com o servidor parado, copie a pasta `C:\ProgramData\LocaControl` inteira para o computador novo (instalado com "Usar neste computador"). A lista de estações (`stations.json`) vem junto, mas a pasta `tls\` **não funciona em outro computador**: a senha das chaves é protegida pelo Windows (DPAPI) para a máquina original. O servidor então mantém a rede fechada ("HTTPS indisponível… A senha das chaves TLS não pôde ser lida" em `logs\servidor.log`) e o computador principal continua funcionando. Renomeie a pasta `tls\` (por exemplo `tls-antigo`), inicie o servidor (uma nova autoridade é criada) e, em cada estação, execute o "Conectar à loja" com um código novo. O sistema nunca recria a autoridade sozinho por cima de arquivos existentes.
+
+## 2. Requisitos (instalação a partir do código-fonte)
 
 - Windows com PowerShell 5.1 ou mais novo.
 - Python 3.12 ou mais novo.
@@ -122,6 +168,7 @@ Com `--prepare`, o servidor só prepara o banco e encerra.
 | 0 | encerrou normalmente |
 | 3 | já há um LocaControl em execução com esta mesma pasta de dados (nada foi alterado) |
 | 4 | pasta de dados indisponível ou banco desaparecido (nada foi criado) |
+| 5 | sem espaço para a cópia pré-atualização na pasta de backups nem na de dados (o banco não foi tocado) |
 
 **Instância única**: o servidor trava um byte do arquivo `locacontrol.lock` (`msvcrt.locking`) antes de qualquer migration. A trava pertence ao processo: o Windows a solta quando ele termina, mesmo encerrado à força. Por isso o arquivo que sobra na pasta é inofensivo e não deve ser apagado à mão.
 
@@ -132,17 +179,17 @@ Com `--prepare`, o servidor só prepara o banco e encerra.
 - existe um arquivo no lugar da pasta;
 - o banco sumiu de uma pasta já usada, reconhecida pelo marcador `locacontrol.installed`, gravado depois da primeira preparação bem-sucedida. Nesse caso, restaure um backup ou corrija o caminho.
 
-**Atualização, reinstalação e desinstalação**: `scripts\update.ps1` só escreve na pasta do programa (`.venv`, `backend`, `frontend\dist`). Na pasta de dados ele apenas para o servidor, que apaga o próprio registro de processo. O instalador (P1-E) deve preservar `%ProgramData%\LocaControl` ao atualizar e reinstalar, e **não removê-la na desinstalação por padrão**.
+**Atualização, reinstalação e desinstalação**: `scripts\update.ps1` só escreve na pasta do programa (`.venv`, `backend`, `frontend\dist`). Na pasta de dados ele apenas para o servidor, que apaga o próprio registro de processo. O instalador (P1-E, seção 1.1) preserva `%ProgramData%\LocaControl` ao atualizar e reinstalar e só a remove na desinstalação com duas confirmações explícitas.
 
-**Executável (prova de empacotamento)**: `scripts\package.ps1` gera `dist-app\LocaControl\LocaControl.exe` a partir de `packaging\locacontrol.spec`. A saída é uma pasta com `_internal\`, ignorada pelo Git, e o comando requer `pip install pyinstaller==6.22.3` no `.venv` e o `frontend\dist` compilado. O executável recebe `LOCACONTROL_DATA_DIR` e `LOCACONTROL_LOCAL_MODE` por variável de ambiente (ou pelo `.env` da pasta de dados, exceto `LOCACONTROL_DATA_DIR`) e a porta por `--port`. O instalador e o teste em Windows limpo ficam para o P1-E.
+**Executável (prova de empacotamento)**: `scripts\package.ps1` gera `dist-app\LocaControl\LocaControl.exe` a partir de `packaging\locacontrol.spec`. A saída é uma pasta com `_internal\`, ignorada pelo Git, e o comando requer `pip install pyinstaller==6.22.3` no `.venv` e o `frontend\dist` compilado. O executável recebe `LOCACONTROL_DATA_DIR` e `LOCACONTROL_LOCAL_MODE` por variável de ambiente (ou pelo `.env` da pasta de dados, exceto `LOCACONTROL_DATA_DIR`) e a porta por `--port`. O instalador é gerado por `scripts\installer.ps1` (seção 1.1).
 
-**Modo rede (P1-D, ADR-025)**: com `LOCACONTROL_LOCAL_MODE=true` e `LOCACONTROL_NETWORK_MODE=true` o servidor escuta em todas as interfaces (sem o modo rede, só em `127.0.0.1`) e aceita estações pareadas da rede privada. Opcionais: `LOCACONTROL_STATION_NETWORKS` (redes extras, por exemplo `["100.64.0.0/10"]`) e `LOCACONTROL_STATION_HOSTS` (nomes extras pelos quais as estações chegam ao servidor, além do IP e do nome do computador). A lista de estações fica em `stations.json` na pasta de dados, fora dos backups: copie a pasta de dados inteira para levar o principal para outro computador sem parear de novo. Rotação do acesso das estações (A1): `LOCACONTROL_STATION_TOKEN_ROTATE_SECONDS` (padrão 900) e `LOCACONTROL_STATION_TOKEN_GRACE_SECONDS` (padrão 120); não reduza em produção sem motivo. Ao lado de `stations.json` fica a cópia `stations.json.bak`; arquivos `stations.json*.corrompido-*` são cópias guardadas para análise. A regra de firewall do Windows limitada à rede local e a escolha "Usar neste computador" × "Conectar à loja" ficam para o instalador (P1-E). O HTTPS com autoridade certificadora local também fica para o P1-E (`docs/P1E_HTTPS.md`).
+**Modo rede (P1-D, ADR-025)**: com `LOCACONTROL_LOCAL_MODE=true` e `LOCACONTROL_NETWORK_MODE=true` o servidor escuta em todas as interfaces (sem o modo rede, só em `127.0.0.1`) e aceita estações pareadas da rede privada. Opcionais: `LOCACONTROL_STATION_NETWORKS` (redes extras, por exemplo `["100.64.0.0/10"]`) e `LOCACONTROL_STATION_HOSTS` (nomes extras pelos quais as estações chegam ao servidor, além do IP e do nome do computador). A lista de estações fica em `stations.json` na pasta de dados, fora dos backups: copie a pasta de dados inteira para levar o principal para outro computador sem parear de novo. Rotação do acesso das estações (A1): `LOCACONTROL_STATION_TOKEN_ROTATE_SECONDS` (padrão 900) e `LOCACONTROL_STATION_TOKEN_GRACE_SECONDS` (padrão 120); não reduza em produção sem motivo. Ao lado de `stations.json` fica a cópia `stations.json.bak`; arquivos `stations.json*.corrompido-*` são cópias guardadas para análise. Desde o P1-E a rede é **só HTTPS**: HTTP em `127.0.0.1:8000` para o próprio principal e HTTPS em `0.0.0.0:8443` (`--https-port`, `LOCACONTROL_HTTPS_PORT`) para as estações, com a autoridade certificadora local em `tls\` (criada no primeiro início; sem ela a rede não abre e o principal continua funcionando). A regra de firewall e o "Conectar à loja" são do instalador (seção 1.1). Código de pareamento: `LOCACONTROL_PAIRING_CODE_LENGTH` (padrão 26, mínimo 13).
 
-**Espaço para backups (A3)**: o backup automático vem ligado (a cada 20 minutos) e só grava se o disco da pasta de backups continuar com pelo menos 10 GB ou 15 % livres (o maior), com teto de 10 GB para a pasta. Planeje a pasta de backups em disco com folga; em discos grandes e cheios ajuste os limites em **Gestão → Backups**. A cópia `pre-upgrade-*.db` que o servidor faz antes de atualizar a estrutura do banco ainda não passa por esses limites.
+**Espaço para backups (A3, revisto no P1-E)**: o backup automático vem ligado (a cada 20 minutos), com teto de 10 GB para a pasta, e só grava se o disco continuar com a **reserva** livre: 10 GB fixos + margem operacional = maior entre 2× o tamanho do banco e 5 % do disco limitado a 20 GB (disco de 64 GB → 13,2 GB; 256 GB → 22,8 GB; 1 ou 2 TB → 30 GB). Ajuste em **Gestão → Backups** ("Manter livres no disco", "Margem operacional (%)", "Margem máxima (GB)"). Falha de backup não altera o banco nem trava o uso: o arquivo parcial é removido e o agendador tenta de novo. A cópia `pre-upgrade-*.db` confere espaço com a mesma reserva: pasta de backups, senão pasta de dados, senão o servidor encerra com o código 5 sem tocar no banco; ficam as 3 cópias mais novas.
 
 ## 7. Uso por outros computadores da rede
 
-O atalho de início não libera acesso pela rede. Para isso é preciso, no mínimo:
+Na edição local, use o instalador (seção 1.1): "Usar neste computador" com a rede da loja no principal e "Conectar à loja" nas estações. O texto abaixo vale para a edição com login. O atalho de início não libera acesso pela rede. Para isso é preciso, no mínimo:
 
 - servir o sistema com HTTPS (as senhas não devem trafegar em HTTP pela rede);
 - definir `LOCACONTROL_COOKIE_SECURE=true` e incluir o endereço exato usado pelos outros computadores em `LOCACONTROL_ALLOWED_ORIGINS`;

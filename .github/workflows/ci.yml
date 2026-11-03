@@ -69,7 +69,7 @@ jobs:
   windows-tests:
     name: Windows — testes do backend
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
@@ -88,7 +88,8 @@ jobs:
       - name: Pytest (inclui DPAPI e ACL, que só rodam no Windows)
         env:
           PYTHONPATH: ${{ github.workspace }}\backend
-        run: .\.venv\Scripts\python.exe -m pytest backend\tests -q -p no:cacheprovider -rs
+        # Um teste parado por mais de 3 min imprime a pilha de todas as threads (diagnóstico).
+        run: .\.venv\Scripts\python.exe -m pytest backend\tests -q -p no:cacheprovider -rs --durations=15 -o faulthandler_timeout=180
 
   windows-installer:
     name: Windows — instalador, Name Constraints, instalação/atualização/desinstalação
