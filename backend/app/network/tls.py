@@ -68,10 +68,15 @@ class FileSecret:
 
 
 class DpapiSecret:
-    """Windows DPAPI, machine scope: only this Windows installation can unprotect."""
+    """Windows DPAPI in the scope of the account that runs the server (SEC-P1E-01).
 
-    kind = "DPAPI do Windows (escopo da máquina)"
-    LOCAL_MACHINE = 0x4
+    Installed, that account is the service identity `NT SERVICE\\LocaControl`: another Windows user
+    of the computer cannot unprotect the password even holding a copy of the file, and neither
+    can a copy taken to another computer. (The machine scope used before let any local user
+    decrypt it.) The files are also closed to other users by the data folder's ACL.
+    """
+
+    kind = "DPAPI do Windows (conta do serviço LocaControl)"
     UI_FORBIDDEN = 0x1
 
     def __init__(self):
@@ -90,7 +95,7 @@ class DpapiSecret:
         buffer = ctypes.create_string_buffer(data, len(data))
         source = self.Blob(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_char)))
         target = self.Blob()
-        flags = self.LOCAL_MACHINE | self.UI_FORBIDDEN
+        flags = self.UI_FORBIDDEN  # no CRYPTPROTECT_LOCAL_MACHINE: user (service) scope
         if not function(ctypes.byref(source), None, None, None, None, flags, ctypes.byref(target)):
             raise TlsUnavailable("O Windows recusou a proteção da chave (DPAPI).")
         try:

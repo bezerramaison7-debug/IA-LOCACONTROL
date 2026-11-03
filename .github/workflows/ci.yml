@@ -136,12 +136,14 @@ jobs:
         run: |
           .\scripts\installer.ps1 -AppVersion 0.1.0
           .\scripts\installer.ps1 -AppVersion 0.1.1 -SkipPackage
-      - name: Instalação, uso, estação, atualização e desinstalação (modo silencioso)
+      - name: Instalação, serviço isolado, conta comum, estação, atualização sob carga, reinstalação e desinstalação
         run: >
           .\scripts\ci\windows-install-test.ps1
           -Setup dist-installer\LocaControl-Setup-0.1.0.exe
           -Upgrade dist-installer\LocaControl-Setup-0.1.1.exe
-          -Isolation relatar
+          -DevPython "$PWD\.venv\Scripts\python.exe"
+          -Backend "$PWD\backend"
+          -Isolation exigir
       - name: Registros da instalação
         if: always()
         uses: actions/upload-artifact@v4
