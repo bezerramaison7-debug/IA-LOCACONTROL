@@ -361,3 +361,36 @@ def test_main_computer_guard_fails_closed_without_identification():
     assert refused.value.status_code == 403
     request.state.station = None
     principal_only(request)  # computador principal identificado: liberado
+
+
+def test_excel_import_is_sent_and_confirmed_only_on_the_main_computer(network):
+    """Decisão do arquiteto (2026-11-03): estações consultam importações; enviar, pré-visualizar
+    e confirmar só no computador principal."""
+    import io
+
+    from openpyxl import Workbook
+
+    app, principal = network
+    station = paired(app, principal, "192.168.0.21", "Balcão")
+    book = Workbook()
+    book.active.append(["Cliente", "Documento"])
+    book.active.append(["Maria", "52998224725"])
+    data = io.BytesIO()
+    book.save(data)
+    files = {"file": ("clientes.xlsx", data.getvalue(), "application/octet-stream")}
+    denied = station.client.post(
+        "/api/imports/upload", files=files, headers={**station.origin, "X-CSRF-Token": station.csrf}
+    )
+    assert denied.status_code == 403 and "computador principal" in denied.json()["detail"]
+    sent = principal.post(
+        "/api/imports/upload",
+        files=files,
+        headers={k: v for k, v in principal.headers.items() if k.lower() != "content-type"},
+    )
+    assert sent.status_code == 201, sent.text
+    batch = sent.json()["batch"]["id"]
+    for path in (f"/api/imports/{batch}/preview", f"/api/imports/{batch}/confirm"):
+        response = station.write("POST", path, {"sheet": "Sheet", "module": "customers"})
+        assert response.status_code == 403, (path, response.text)
+    assert station.client.get("/api/imports").status_code == 200
+    assert station.client.get(f"/api/imports/{batch}").status_code == 200
