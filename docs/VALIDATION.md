@@ -79,3 +79,21 @@ Discos nos testes: a suíte usa um disco simulado (1 TB, 900 GB livres) por padr
 Pendente no Windows: limites com discos reais, `fsync` no NTFS, pendrive/HD externo, medição do M1 com `scripts/measure_backup_lock.py`. Não declarar homologado.
 
 Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
+
+## 2026-11-03 — SHA `f106d08` (P1-D após a auditoria: A1, A2, M4, M5 e importação só no principal)
+
+Cabeça da branch `p1/d-rede` (PR #7), que incorpora o P1-C validado em `9156985`. Bateria num **checkout limpo e destacado nesse SHA**, no **Linux da nuvem**, não no Windows; as "estações" são clientes pelo endereço de rede do contêiner, com cookies próprios.
+
+| Verificação | Resultado |
+| --- | --- |
+| `ruff check` / `ruff format --check` | aprovado |
+| `pytest backend/tests` | 235 passaram, 1 pulado (ACL do Windows). Novos: `test_station_rotation.py` (4: cópia detectada nos dois sentidos, sem falso positivo para resposta perdida, navegador ocioso e abas em paralelo, oferta a cada sessão), `test_registry_resilience.py` (8: fsync e cópia, recuperação pela `.bak` preservando revogação, quatro formas de arquivo ilegível com o principal funcionando, reparo auditado), `test_station_identity.py` (2), importação só no principal (`test_stations.py`), servidor real com data comercial controlada e cópia de credencial detectada (`test_network_server.py`, 7) |
+| Frontend: `npm ci`, lint, `format:check`, Vitest, `build` | sem erros; 85 testes em 18 arquivos |
+| E2E (`scripts/e2e-auth.py`) | 36 + 4 + 1 (rede) |
+| Smoke | aprovado |
+
+Correção de registro: a validação de `a01dce3` (acima, 208 passaram) dependia do horário — `test_two_stations_withdraw_the_same_unit_at_once` só passava entre 21h e 24h de Brasília (achado M5). Desde `e7a552d` o servidor do teste roda com a data comercial fixada; a suíte passou nesta máquina às 09h e às 11h (UTC−3) de 2026-11-03. Durante o desenvolvimento, o commit `39c8e02` (A1) foi feito com quatro testes de atualização de bases antigas falhando, corrigidos em `0e52a49`.
+
+Pendente no Windows: duas estações reais, rotação por horas sem revogação indevida, cópia de cookies entre PCs, `fsync` do `stations.json` no NTFS, firewall, acesso pelo nome do computador. Não declarar homologado.
+
+Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
