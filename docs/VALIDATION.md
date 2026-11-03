@@ -124,3 +124,29 @@ Observação de desempenho (não é falha): no Windows da CI, dois testes de `te
 **O que esta validação NÃO comprova**: Windows 10/11 de usuário (UAC, SmartScreen com instalador sem assinatura, antivírus); o assistente gráfico (a CI só usa o modo silencioso); uma estação em **outro** computador (na CI, a mesma máquina faz os dois papéis); Edge, Chrome e Firefox reais diante da CA; nome do computador e `.local`; DHCP; DPAPI após reinício e migração; atalho de inicialização; pendrive/HD externo; disco pequeno real. Lista completa em `docs/P1_BRIEFING.md` ("P1-E — o que falta validar em computador físico"). **Não declarar homologado.**
 
 Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
+
+## 2026-11-03 — SHA `667582a40eb9d38f7a5b8957da2f66eef1182669` (revisão do PR #8: SEC-P1E-01, REL-P1E-02, UX-P1E-03, SEC-P1E-04)
+
+Cabeça da branch `p1/e-instalador` depois da revisão arquitetural (ADR-027). **CI do GitHub** nesse SHA, execução [41701446712](https://github.com/bezerramaison7-debug/LocaControl/actions/runs/41701446712): os três jobs aprovados. **Linux da nuvem**, checkout limpo e destacado de `6a269fa` — o SHA anterior, que difere deste apenas em `scripts/ci/windows-install-test.ps1` (script que só roda no Windows). Sem dados comerciais reais.
+
+| Verificação | Linux (nuvem, `6a269fa`) | CI Linux (`667582a`) | CI Windows Server 2022 (`667582a`) |
+| --- | --- | --- | --- |
+| `ruff check` / `ruff format --check` | aprovado | aprovado | — |
+| `pytest backend/tests` | 269 passaram, 2 pulados (DPAPI e ACL, só Windows) | aprovado | **270 passaram, 1 pulado** (caminhos POSIX) |
+| Frontend: `npm ci`, lint, `format:check`, Vitest, `build` | 87 testes em 18 arquivos | aprovado | `build` |
+| E2E (`scripts/e2e-auth.py`, rede por HTTPS) | 36 + 4 + 1 | aprovado | — |
+| Smoke | aprovado | aprovado | — |
+| CryptoAPI (`scripts/ci/name-constraints.ps1`) | — | — | aprovado: nome/IP públicos, IP privado de **outra rede** e **assinatura de código** emitidos pela CA recusados |
+| Instalação/serviço/estação/atualização/reinstalação/desinstalação (`scripts/ci/windows-install-test.ps1`, modo silencioso) | — | — | aprovado (conferências abaixo) |
+
+**SEC-P1E-01** — reproduzido antes da correção (`9b60fea`, execução [41678128762](https://github.com/bezerramaison7-debug/LocaControl/actions/runs/41678128762)): a conta local comum `lc-sonda` lia e alterava banco, `.env` e `stations.json`, criava arquivos, decifrava a senha das chaves e abria a chave privada da CA. Depois (`667582a`): serviço `LocaControl` com identidade `NT SERVICE\LocaControl` (conferida no processo); pasta de dados sem herança, sem permissão para Usuários/Usuários autenticados/Todos/Interativo/Proprietário criador, arquivos só com permissões herdadas; a mesma sonda **sem nenhum acesso** depois da instalação, da atualização e de uma reinstalação feita sobre permissões afrouxadas à mão; a conta comum inicia o serviço pelo `abrir` e **não consegue pará-lo** (código 13); HTTPS disponível com a senha protegida pela conta do serviço.
+
+**REL-P1E-02** — reproduzido em `test_shutdown.py` antes da correção (revisão 0012 com coluna da 0013; "duplicate column" no início seguinte). Testes novos (9, Linux e Windows): migration morta no meio volta à revisão anterior e é refeita; recuperação pela cópia prévia mesmo com esquema pela metade; sem cópia e estado desconhecido, recusa sem alterar (código 8); migration com erro desfeita na hora; `integrity_check` após fim anormal, banco danificado recusado, backup incompleto removido; `parar` espera o backup em andamento (requisição respondida, conjunto válido, saída 0); `--sem-forcar` não interrompe (código 9); forçado deixa o PID e o próximo início verifica (código 7). Na CI Windows, **atualização com gravações contínuas**: gravações confirmadas antes e depois da troca do programa, **nenhuma perdida**, `integrity_check` ok, nenhum backup incompleto, nenhuma atualização pela metade.
+
+**UX-P1E-03** — estação instalada pelo instalador contra um principal de teste (porta 18443): código errado → instalador sai com **20**, nenhuma CA nem endereço registrados, motivo exato no registro do instalador; código certo → sai com 0, CA na Raiz, HTTPS validado pelo Windows, sem serviço de servidor; conta comum abre o endereço da loja; desinstalação remove a CA. A CI encontrou e o código corrigiu: linhas `\r\r\n` no arquivo de resultado (mensagem vazia no instalador) e laço da página de nova tentativa em modo silencioso.
+
+**SEC-P1E-04** — testes Linux (verificador da `cryptography`): CA só com loopback e a /24 do endereço, EKU `serverAuth`, outras redes privadas recusadas, endereço fora da CA informado, sem endereço na rede local nada é criado, `nova-autoridade --confirmar` guarda a CA anterior e cria outra; tela Estações mostra as redes do certificado e o aviso (Vitest).
+
+**O que esta validação NÃO comprova**: Windows 10/11 de usuário (UAC, SmartScreen com instalador sem assinatura, antivírus); o assistente gráfico (página de nova tentativa, navegador aberto como o usuário original); estação em outro computador físico; navegadores reais diante das Name Constraints e do EKU; desligamento do Windows com backup em andamento; queda de energia real; DHCP e troca de rede reais; pastas de backup em HD externo NTFS ou compartilhamento de rede com a identidade do serviço. Roteiro em `docs/P1_BRIEFING.md`. **Não declarar homologado.**
+
+Este registro foi acrescentado em commit posterior ao SHA testado e não altera código.
