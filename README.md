@@ -1,3 +1,7 @@
+![IA](https://img.shields.io/badge/IA-Feito_por_IA-7F77DD)
+
+> **Autoria:** eu defini a ideia, os requisitos e as regras de negócio. A arquitetura e o código foram feitos por IA, sob minha orientação.
+
 # LocaControl
 
 Sistema local para gestão de locação de equipamentos e materiais de construção civil.
